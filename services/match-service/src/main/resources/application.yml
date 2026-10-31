@@ -10,6 +10,14 @@ spring:
         import:
         - "optional:file:./.env[.properties]"
 
+    cloud:
+        openfeign:
+            client:
+                config:
+                    default:
+                        connect-timeout: 1000
+                        read-timeout: 3000
+
     datasource:
         driver-class-name: org.mariadb.jdbc.Driver
         url: ${MATCH_DB_URL:jdbc:mariadb://localhost:3306/match_db}

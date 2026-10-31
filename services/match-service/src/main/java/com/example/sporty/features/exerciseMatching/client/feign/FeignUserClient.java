@@ -6,6 +6,7 @@ import java.util.Optional;
 
 import org.springframework.stereotype.Component;
 
+import com.example.sporty.features.commons.exception.exerciseMatching.ExternalServiceUnavailableException;
 import com.example.sporty.features.exerciseMatching.client.UserClient;
 
 import feign.FeignException;
@@ -20,9 +21,15 @@ public class FeignUserClient implements UserClient {
     @Override
     public Optional<UserSummary> findUser(Long userId) {
         try {
-            return Optional.ofNullable(userServiceFeignClient.getUser(userId));
+            UserSummary user = userServiceFeignClient.getUser(userId);
+            if (user == null || user.userId() == null || user.status() == null) {
+                throw new ExternalServiceUnavailableException("user-service");
+            }
+            return Optional.of(user);
         } catch (FeignException.NotFound e) {
             return Optional.empty();
+        } catch (FeignException e) {
+            throw new ExternalServiceUnavailableException("user-service", e);
         }
     }
 
@@ -31,6 +38,15 @@ public class FeignUserClient implements UserClient {
         if (userIds.isEmpty()) {
             return List.of();
         }
-        return userServiceFeignClient.getProfiles(userIds);
+        try {
+            List<ProfileSummary> profiles = userServiceFeignClient.getProfiles(userIds);
+            if (profiles == null || profiles.stream().anyMatch(profile ->
+                    profile == null || profile.userId() == null)) {
+                throw new ExternalServiceUnavailableException("user-service");
+            }
+            return profiles;
+        } catch (FeignException e) {
+            throw new ExternalServiceUnavailableException("user-service", e);
+        }
     }
 }

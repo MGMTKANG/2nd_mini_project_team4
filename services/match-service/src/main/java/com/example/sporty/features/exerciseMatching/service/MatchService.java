@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchDeleteForbiddenException;
+import com.example.sporty.features.commons.exception.exerciseMatching.ExternalServiceUnavailableException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchModifyForbiddenException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchNotFoundException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchOwnerCannotLeaveException;
@@ -286,7 +287,8 @@ public class MatchService {
             }
         }
 
-        return getMatchDetail(matchId, userId);
+        // 응답용 원격 조회 실패는 이 트랜잭션 경계 안에서 처리해 변경을 커밋한다.
+        return buildMatchDetail(match, userId, true);
     }
 
     public List<MatchResponseDto> searchMatches(MatchSearchRequestDto req) {
@@ -365,8 +367,13 @@ public class MatchService {
         MatchEntity match = matchRepository.findById(matchId)
                 .orElseThrow(MatchNotFoundException::new);
 
+        return buildMatchDetail(match, userId, false);
+    }
+
+    private MatchDetailResponseDto buildMatchDetail(
+            MatchEntity match, Long userId, boolean tolerateRemoteFailure) {
         List<MatchParticipantEntity> participants =
-                matchParticipantRepository.findAllByMatch_IdOrderByIdAsc(matchId);
+                matchParticipantRepository.findAllByMatch_IdOrderByIdAsc(match.getId());
 
 
         List<Long> participantUserIds = participants.stream()
@@ -376,11 +383,23 @@ public class MatchService {
                 .toList();
 
 
-        Map<Long, ProfileSummary> profilesByUserId = participantUserIds.isEmpty()
-                ? Map.of()
-                : userClient.findProfiles(participantUserIds).stream()
-                        .collect(Collectors.toMap(ProfileSummary::userId, Function.identity(),
-                                (first, second) -> first));
+        Map<Long, ProfileSummary> profilesByUserId;
+        FacilityServiceSummary facility;
+        try {
+            profilesByUserId = participantUserIds.isEmpty()
+                    ? Map.of()
+                    : userClient.findProfiles(participantUserIds).stream()
+                            .collect(Collectors.toMap(ProfileSummary::userId, Function.identity(),
+                                    (first, second) -> first));
+            facility = facilityClient.findService(match.getServiceId()).orElse(null);
+        } catch (ExternalServiceUnavailableException e) {
+            if (!tolerateRemoteFailure) {
+                throw e;
+            }
+            // 수정 응답만 시설·프로필을 함께 비운다. 참가 인원·역할·권한은 유지한다.
+            profilesByUserId = Map.of();
+            facility = null;
+        }
 
         List<MatchParticipantSummaryDto> participantSummaries = new ArrayList<>();
         boolean isOwner = false;
@@ -406,8 +425,6 @@ public class MatchService {
                 }
             }
         }
-
-        FacilityServiceSummary facility = facilityClient.findService(match.getServiceId()).orElse(null);
 
         return MatchDetailResponseDto.builder()
                 .matchId(match.getId())
