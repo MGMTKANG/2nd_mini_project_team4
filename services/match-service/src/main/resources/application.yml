@@ -1,5 +1,6 @@
 server:
     port: 8082
+    shutdown: graceful
 
 spring:
     application:
@@ -9,8 +10,14 @@ spring:
     config:
         import:
         - "optional:file:./.env[.properties]"
+        - "optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}"
+
+    lifecycle:
+        timeout-per-shutdown-phase: 20s
 
     cloud:
+        config:
+            enabled: ${CONFIG_ENABLED:false}
         openfeign:
             client:
                 config:
@@ -26,11 +33,25 @@ spring:
 
     jpa:
         hibernate:
-            ddl-auto: update
+            ddl-auto: ${MATCH_JPA_DDL_AUTO:update}
         properties:
             hibernate:
                 "[format_sql]": true
                 dialect: org.hibernate.dialect.MariaDBDialect
+
+eureka:
+    client:
+        enabled: ${EUREKA_ENABLED:false}
+        service-url:
+            defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+    instance:
+        prefer-ip-address: true
+
+management:
+    endpoints:
+        web:
+            exposure:
+                include: health,info
 
 jwt:
     secret: ${JWT_SECRET_KEY}
@@ -49,3 +70,11 @@ spring:
             on-profile: local
     jpa:
         show-sql: true
+
+---
+spring:
+    config:
+        activate:
+            on-profile: dev | prod
+    jpa:
+        show-sql: false

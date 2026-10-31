@@ -21,5 +21,10 @@ public final class PublicEndpoints {
 
     public static final RequestMatcher MATCHER = new OrRequestMatcher(
             PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, "/api/matches"),
-            MATCH_DETAIL);
+            MATCH_DETAIL,
+            PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, "/actuator/health"),
+            // health probes를 활성화했을 때 K8s가 인증 없이 확인할 수 있는 경로만 허용한다.
+            PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, "/actuator/health/liveness"),
+            PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, "/actuator/health/readiness"),
+            PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, "/actuator/info"));
 }
