@@ -15,6 +15,12 @@ JWT_SECRET_KEY=... MATCH_DB_URL=jdbc:mariadb://localhost:3306/match_db \
 MATCH_DB_USERNAME=... MATCH_DB_PASSWORD=... ./gradlew bootRun
 ```
 
+- Docker(매치 단독 로컬용): 위의 `cd services/match-service` 실행 후 `cp .env.example .env`로 가짜 비밀값을 복사하고 필요시 수정한다(`.env`는 Git·이미지 빌드에서 제외).
+- 기동: `docker compose -f compose.match-local.yml up -d --build` (MariaDB 헬스체크 통과 후 매치 시작, 매치 컨테이너 메모리 512MiB 제한).
+- 확인: `docker compose -f compose.match-local.yml ps`, `curl -i http://localhost:8082/api/matches` → 초기 빈 DB는 비로그인 `200`·`[]` 예상(Actuator 없음). HTTP 확인은 앱 기동 완료 후 실행한다.
+- 유저·체육시설 URL은 기본값(`http://localhost:8081`, `http://localhost:8083`)이며 연결되지 않는다. `curl -i 'http://localhost:8082/api/matches?isFree=true'` 같은 원격 호출은 `503 / EXTERNAL_SERVICE_UNAVAILABLE`이 정상이며, 기존 매치가 있으면 기본 목록도 시설 조회로 `503`이 될 수 있다.
+- 정리: `docker compose -f compose.match-local.yml down -v` (로컬 DB 볼륨도 삭제).
+
 | 환경 변수 | 기본값 | 설명 |
 |---|---|---|
 | `MATCH_DB_URL` | `jdbc:mariadb://localhost:3306/match_db` | 매치 전용 DB |
@@ -102,7 +108,7 @@ MATCH_DB_USERNAME=... MATCH_DB_PASSWORD=... ./gradlew bootRun
 - **회원 탈퇴 정리의 최신 조회 — 완료(현재 H2 테스트 범위):** 엔티티 대신 매치 ID만 오름차순으로 조회한 뒤 잠금 후 읽은 매치·참가 정보로 정리하며, OWNER 삭제·본인만 참가 취소·마감 재개·시작 후 마감 유지와 ID 조회 사이에 커밋된 정원 수정 보존 테스트를 추가했다. 아래 탈퇴 연동 전 해결 항목은 남아 있다.
 - **수정 응답 장애 테스트 — 완료:** 실제 Feign의 시설 시간 초과·JSON 오류·연결 거부에서도 수정 200·DB 반영·시설 필드 null을 단언하고, 프로필 정상/시설 500은 시설 요청 기록까지 확인한다. 이번 보강으로 시간 초과·JSON 오류의 실제 예외 원인도 단언하며, 보강분 실행 검증은 별도로 필요하다.
 - **Eureka·Config·Gateway 연동:** 공통 설정 담당(이우진)이 준비되면 `url` 대신 서비스 이름으로 찾도록 바꾼다.
-- **Dockerfile:** 인프라 담당과 형식을 맞춘 뒤 추가.
+- **전체 Compose 연동:** 매치 Dockerfile·매치 단독 로컬 Compose는 추가했다. 전체 서비스 Compose 통합은 인프라 담당과 진행한다.
 - **ERD 초안의 포인트·SAGA 컬럼과 새 상태값:** 팀 규칙 확정 후 3단계에서 반영.
 
 ## 탈퇴 연동 전 반드시 해결
