@@ -44,7 +44,7 @@ public class MatchCreateRequestDto {
     private LocalDateTime endAt;
 
     @NotNull(message = "모집 정원은 필수입니다.")
-    @Min(value = 1, message = "모집 정원은 1명 이상이어야 합니다.")
+    @Min(value = 2, message = "모집 정원은 2명 이상이어야 합니다.")
     private Integer maxParticipant;
 
     @NotNull(message = "운동 수준은 필수입니다.")
