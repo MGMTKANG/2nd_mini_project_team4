@@ -2,6 +2,8 @@ package com.example.sporty.features.exerciseMatching.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.nullValue;
+import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.Mockito.doAnswer;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -16,6 +18,7 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,6 +31,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -36,7 +40,6 @@ import org.springframework.transaction.support.TransactionTemplate;
 import com.example.sporty.features.commons.exception.exerciseMatching.ExternalServiceUnavailableException;
 import com.example.sporty.features.commons.token.JwtProvider;
 import com.example.sporty.features.commons.util.SportType;
-import com.example.sporty.features.exerciseMatching.client.FacilityClient;
 import com.example.sporty.features.exerciseMatching.client.UserClient;
 import com.example.sporty.features.exerciseMatching.client.feign.FeignFacilityClient;
 import com.example.sporty.features.exerciseMatching.client.feign.FeignUserClient;
@@ -89,7 +92,7 @@ class MatchRemoteFailureHttpIntegrationTest {
     @Autowired private MatchParticipantRepository participantRepository;
     @Autowired private PlatformTransactionManager transactionManager;
     @Autowired private UserClient userClient;
-    @Autowired private FacilityClient facilityClient;
+    @MockitoSpyBean private FeignFacilityClient facilityClient;
 
     @DynamicPropertySource
     static void clientUrls(DynamicPropertyRegistry registry) {
@@ -281,18 +284,36 @@ class MatchRemoteFailureHttpIntegrationTest {
     void modifyFacilityReadTimeoutCommitsAndClearsDecorations() throws Exception {
         Long matchId = createJoinedMatchForModification();
         FACILITY_SERVICE.stub("/internal/facility-services", 200, FACILITY_JSON, Duration.ofSeconds(3));
+        AtomicReference<ExternalServiceUnavailableException> failure = captureFacilityFailure();
 
         assertModificationCommittedWithoutDecorations(matchId, modification());
         assertFacilityLookupRequested();
+        assertThat(failure.get()).isNotNull().hasCauseInstanceOf(RetryableException.class)
+                .hasRootCauseInstanceOf(SocketTimeoutException.class);
     }
 
     @Test
     void modifyMalformedFacilityJsonCommitsAndClearsDecorations() throws Exception {
         Long matchId = createJoinedMatchForModification();
         FACILITY_SERVICE.stub("/internal/facility-services", 200, "[broken");
+        AtomicReference<ExternalServiceUnavailableException> failure = captureFacilityFailure();
 
         assertModificationCommittedWithoutDecorations(matchId, modification());
         assertFacilityLookupRequested();
+        assertThat(failure.get()).isNotNull().hasCauseInstanceOf(DecodeException.class);
+    }
+
+    private AtomicReference<ExternalServiceUnavailableException> captureFacilityFailure() {
+        AtomicReference<ExternalServiceUnavailableException> failure = new AtomicReference<>();
+        doAnswer(invocation -> {
+            try {
+                return invocation.callRealMethod(); // 실제 Feign 호출을 위임하고 발생한 원인만 수집한다.
+            } catch (ExternalServiceUnavailableException exception) {
+                failure.set(exception);
+                throw exception;
+            }
+        }).when(facilityClient).findServices(anyCollection());
+        return failure;
     }
 
     private void assertModificationCommittedWithoutDecorations(Long matchId, MatchModifyRequestDto request)
