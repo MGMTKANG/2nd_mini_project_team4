@@ -288,7 +288,8 @@ public class MatchService {
         if (capacityChanged) {
             if (participantCount == match.getMaxParticipant()) {
                 match.closeRecruitment();
-            } else {
+            } else if (match.getStartAt().isAfter(LocalDateTime.now())) {
+                // 참가 탈퇴와 같은 기준으로, 수정 후 시작 시각이 지나지 않은 매치만 모집을 재개한다.
                 match.reopenRecruitment();
             }
         }

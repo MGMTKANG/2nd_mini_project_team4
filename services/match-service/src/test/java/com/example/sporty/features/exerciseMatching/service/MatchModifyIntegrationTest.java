@@ -125,6 +125,23 @@ class MatchModifyIntegrationTest {
     }
 
     @Test
+    @DisplayName("시작 시각이 지난 CLOSED 매치는 정원을 늘려도 모집을 재개하지 않는다")
+    void increasingCapacityAfterStartKeepsRecruitmentClosed() {
+        Long matchId = createMatch(2, 2);
+        assertState(matchId, 2, 2, MatchStatus.CLOSED);
+        LocalDateTime startedAt = LocalDateTime.now().minusHours(1).withNano(0);
+        MatchModifyRequestDto request = MatchModifyRequestDto.builder().title("수정 제목").description("수정 설명")
+                .startAt(startedAt).endAt(startedAt.plusHours(3)).maxParticipant(3)
+                .skillLevel(SkillLevel.ADVANCED).genderGroup(GenderGroup.FEMALE).build();
+
+        MatchDetailResponseDto response = matchService.modifyMatch(matchId, users.get(1L), request);
+
+        assertThat(response.getStatus()).isEqualTo(MatchStatus.CLOSED);
+        assertThat(response.getMaxParticipant()).isEqualTo(3);
+        assertState(matchId, 2, 3, MatchStatus.CLOSED);
+    }
+
+    @Test
     @DisplayName("모집 중인 매치의 정원만 늘리면 RECRUITING을 유지한다")
     void increasingRecruitingCapacityKeepsRecruitmentOpen() {
         Long matchId = createMatch(3, 2);

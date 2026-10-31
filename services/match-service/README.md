@@ -58,7 +58,7 @@ Actuator 웹 노출은 `health,info`뿐이며 두 경로는 비로그인 접근�
 
 테스트: `./gradlew test` (기존 H2 테스트와 아래 MariaDB 통합 테스트. 다른 서비스 없이 실행되며 Docker가 없으면 MariaDB 테스트만 자동으로 건너뛴다. 새 의존성·컨테이너 이미지를 최초로 받으려면 네트워크가 가능한 빌드 환경 필요)
 
-### MariaDB 통합 테스트 (4b)
+### MariaDB 통합 테스트
 
 `MatchMariaDBIntegrationTest`는 Testcontainers로 `compose.match-local.yml`과 같은 `mariadb:11.4.8`을 실행한다. Docker 데몬에 접근할 수 있어야 하며 로컬 Compose DB나 실서비스 DB는 사용하지 않는다. `MariaDBIntegrationTestSupport`는 MariaDB dialect·`ddl-auto=create-drop`을 적용하고, 정적 컨테이너를 같은 테스트 JVM의 클래스 사이에서 공유한다. 클래스별 `@Container` 종료 대신 Testcontainers 리소스 정리기가 JVM 종료 시 컨테이너를 제거한다. `@Testcontainers(disabledWithoutDocker = true)`로 Docker 없는 CI에서는 이 테스트만 건너뛴다. Docker가 있는데 이미지 다운로드·DB 기동·단언이 실패하면 테스트 실패로 남는다.
 
@@ -75,8 +75,7 @@ Gradle 의존성과 MariaDB·Testcontainers 보조 이미지가 모두 준비된
 - 잠금: `findByIdForUpdate` 보유자가 참가자 추가를 커밋하기 전까지 수정의 SELECT 자체가 반환되지 않고, 이후 커밋한 인원으로 CLOSED가 되는지 확인한다.
 - 멱등 처리: 같은 ID의 순차 중복은 처리 시각·후속 매치를 보존한다. 동시 두 호출이 모두 미처리를 조회하도록 동기화한 뒤 실제 PK 충돌(오류 1062 / SQLState 23000), 실패 측 롤백 후 정상 반환, 이력 1행·정리 1회를 확인한다. 실제 리스너→처리기를 직접 호출하며 Kafka 전송·오프셋은 기존 EmbeddedKafka 테스트 범위다.
 - 스키마: 예약어 테이블 `match`의 조회·InnoDB, `(match_id, user_id)` UNIQUE와 `processed_event` 복합 PK의 메타데이터 및 실제 중복 거절을 확인한다. 현재 엔티티가 만드는 스키마의 검증이며 최신 ERD의 미확정 Saga 스키마 전체를 검증하는 것은 아니다.
-- b의 `defaultRepeatableReadReproducesClosedStatusAfterWithdrawal`은 같은 시나리오를 격리 지정 없는 새 트랜잭션에서 `removeMatchesForWithdrawal` 직접 호출로 실행한다. 기본 REPEATABLE READ 연결·최종 2명/정원 3/CLOSED 오류를 단언하며 집계 결과는 스텁하지 않는다. **2026-10-31 실제 MariaDB에서 재현 확인(Claude 실행). 오류 재현 테스트를 유지한다.**
-- **수정 전 검증(Claude 실행 보고, 2026-10-31): Docker MariaDB 11.4.8에서 전체 211개 통과·skipped 0, MariaDB+Kafka 테스트 3회 반복 통과.** PK 컬럼 순서 단언 수정 후 결과이며, READ_COMMITTED 제거 변이는 실제 격리 수준 단언에서 실패하는 것을 확인했다. Codex가 이번 작업에서 재실행한 결과는 아니다. **이번 Kafka 수신 보완 후 결과: 2026-10-31 Claude 실행 보고(샌드박스 밖, Docker MariaDB 11.4.8): `gradle cleanTest test` 213개 통과·skipped 0, `UserWithdrawnKafkaIntegrationTest`·`UserWithdrawnKafkaStartupIntegrationTest`·`MatchMariaDBIntegrationTest` 3회 반복 통과.** Docker 없는 환경의 자동 건너뜀은 미확인이다.
+- 오류 재현: `defaultRepeatableReadReproducesClosedStatusAfterWithdrawal`은 같은 시나리오를 격리 지정 없는 새 트랜잭션에서 `removeMatchesForWithdrawal` 직접 호출로 실행한다. 기본 REPEATABLE READ 연결에서 최종 2명/정원 3/CLOSED 오류가 실제로 생기는 것을 단언하며 집계 결과는 스텁하지 않는다. 격리 수준을 지정해야 하는 이유를 보여 주므로 유지한다.
 
 ## 회원 탈퇴 이벤트 수신
 
@@ -112,7 +111,7 @@ Compose도 `.env`의 `MATCH_KAFKA_ENABLED`(기본 `false`), `KAFKA_BOOTSTRAP_SER
 
 백오프 간격은 `match.kafka.retry.initial-interval-ms`(기본 `1000`), `match.kafka.retry.max-interval-ms`(기본 `30000`)로 주입한다(`0 < 초기 <= 최대`). `UserWithdrawnKafkaIntegrationTest`의 `@SpringBootTest(properties=...)`에서만 `10`/`50`ms로 줄여 5회 실패 후 성공을 빠르게 검증하며, 배수·무제한 경과 시간·운영 `earliest` 설정은 유지한다.
 
-운영에서 `removeMatchesForWithdrawal`은 이 처리 경계 밖에서 호출하지 않는다. 새 트랜잭션에는 미리 적재된 `Match`가 없고, 매치 ID만 모은 뒤 오름차순 잠금 조회로 정리한다. MariaDB에서의 스냅샷·잠금·중복 처리 검증은 4b의 해당 테스트로 확인했다(Claude 실행 보고, 2026-10-31). 수정 전 211개 통과와 이번 수정 후 실행 예정 상태는 위 검증 기록을 따른다.
+운영에서 `removeMatchesForWithdrawal`은 이 처리 경계 밖에서 호출하지 않는다. 새 트랜잭션에는 미리 적재된 `Match`가 없고, 매치 ID만 모은 뒤 오름차순 잠금 조회로 정리한다. MariaDB에서의 스냅샷·잠금·중복 처리는 위 MariaDB 통합 테스트로 확인했다.
 
 ## 원본에서 바꾼 것
 
@@ -127,7 +126,7 @@ Compose도 `.env`의 `MATCH_KAFKA_ENABLED`(기본 `false`), `KAFKA_BOOTSTRAP_SER
 | `joinMatch`가 회원 존재만 확인해 탈퇴 회원도 참가 가능 | 회원 확인 직후 ACTIVE 여부를 검사해 탈퇴 회원의 참가를 차단 (`WithdrawnUserFoundException`, 401, `USER_WITHDRAWN`) |
 | 생성·수정 요청에서 정원 1명 허용 | 최소 2명으로 Bean Validation 적용(400, `모집 정원은 2명 이상이어야 합니다.`). 검색 요청의 정원 조건은 유지 |
 | 현재 참가 인원보다 작은 정원으로 수정 가능 | OWNER를 포함한 인원을 확인하고 변경 전에 거절(400, `{code, message}`, `MATCH_CAPACITY_BELOW_PARTICIPANTS`) |
-| 정원을 수정해도 모집 상태 유지 | 정원이 바뀌면 현재 인원과 같을 때 `CLOSED`, 더 클 때 `RECRUITING`으로 재계산 |
+| 정원을 수정해도 모집 상태 유지 | 정원이 바뀌면 현재 인원과 같을 때 `CLOSED`, 더 클 때 `RECRUITING`으로 재계산. 단, 수정 후 시작 시각이 지난 매치는 참가 탈퇴와 같이 모집을 재개하지 않는다 |
 | 수정·삭제는 잠금 없는 매치 조회 | 참가·탈퇴·회원탈퇴 정리와 같은 `findByIdForUpdate` 행 잠금을 먼저 획득. 상세 조회는 일반 조회 유지 |
 | 디버그용 `System.out.println` | 삭제 |
 
@@ -143,29 +142,41 @@ Compose도 `.env`의 `MATCH_KAFKA_ENABLED`(기본 `false`), `KAFKA_BOOTSTRAP_SER
 
 ## 검증
 
-- 원본 매치 테스트 11개 파일(101개)을 옮겨 모두 통과. 회원·시설 데이터는 메모리 가짜 클라이언트로 대체했다.
-- 전체 설정(Feign 클라이언트 포함)이 뜨는지 확인하는 `MatchServiceApplicationTests`를 유지하고 기본 Eureka·Config 비활성값, 비로그인 health/info·probe 접근, 다른 Actuator 경로의 비노출 검증을 추가했다.
-- `FeignDiscoveryClientHttpTest` 추가: Eureka 없이 `SimpleDiscoveryClient`에 두 스텁 주소를 등록하고 두 URL을 빈 값으로 설정한다. 실제 `FeignUserClient`·`FeignFacilityClient`, LoadBalancer 클라이언트와 HTTP 요청 기록을 확인한다.
-- `CloudProfileConfigurationTest` 추가: `local/dev/prod`의 SQL 출력·클라우드 기본 비활성값과 `MATCH_JPA_DDL_AUTO=validate` 적용을 검증한다.
-- 팀 공통 규약 초안(2026-10-31, 합의 전) 기준 HTTP 계약 검증: `FeignUserClientHttpTest`, `FeignFacilityClientHttpTest`에서 실제 Feign 구현과 JDK 내장 HTTP 스텁을 사용한다.
-- 경로·반복 ID 쿼리·한글/선택 파라미터·JSON 매핑·404/500·응답 시간 초과·빈 입력의 요청 생략을 검증한다. 연결 1초/응답 1500ms는 테스트 전용 설정이다.
-- 캐시에 의존성이 준비된 환경에서 실행: `gradle cleanTest test --offline` (H2와 `127.0.0.1` 임의 포트 사용, 외부 서비스 불필요).
-- 옮기지 않은 테스트: `MatchIntegrationTest`(원본도 MariaDB 연결이 필요해 기본 실행에서 제외되던 테스트).
-- 실제 유저·체육시설 서비스와 연결한 동작은 아직 확인하지 않았다(상대 API가 아직 없음).
-- 정원·잠금 회귀 테스트 추가: `MatchCapacityControllerTest`(최소 정원 입력·전용 오류 응답), `MatchModifyIntegrationTest`(거절 후 DB 보존·마감/재개·참가와 축소 동시 요청). 동시성 검증 대상 DB는 H2이며 MariaDB 검증은 별도로 필요하다.
-- Codex 샌드박스 실행 이력(2026-10-31): Gradle이 `~/.gradle/native/.../libnative-platform.dylib.lock` 쓰기 권한 오류로 빌드 시작 전에 중단돼 컴파일·테스트는 미실행이었다. 캐시·권한 우회 없이 종료했다.
-- 후속 과제 구현 당시 Codex 샌드박스 실행 이력(2026-10-31): 강제 잠금 경합 3개, 회원탈퇴 정리 3개, 수정 응답의 시설 시간 초과·JSON 오류·연결 거부 3개 테스트를 추가하고 기존 프로필 정상/시설 500 사례의 실제 시설 요청 기록을 확인하도록 보강했다. 당시 `gradle test --offline`은 Gradle 네이티브 서비스의 `libnative-platform.dylib` 로딩 실패로 빌드 시작 전에 중단되어 **컴파일·테스트 미실행**이며, 권한·캐시 우회는 하지 않았다.
-- Cloud 클라이언트 변경 전 실행 기록(Claude 실행 보고): 2026-10-31 20:1x KST, Claude가 샌드박스 밖에서 `gradle cleanTest test` 181개 통과 및 잠금 경합·탈퇴 테스트 10회 반복 통과를 확인했다. `modifyMatch`의 잠금 조회를 일반 조회로 바꾸면 경합 테스트가 실패하는 변이 확인 후 원복했다. 이는 예외 원인 단언 보강 전의 실행 기록이며, Codex가 원본 실행 로그를 재검증한 결과는 아니다.
-- Cloud 클라이언트 변경 후 Codex 실행(2026-10-31): `gradle cleanTest test --offline --no-daemon`은 Gradle 네이티브 서비스의 `libnative-platform.dylib` 로딩 실패로 빌드 시작 전에 중단됐다. **기존·추가 테스트 모두 컴파일·실행 미확인**이다. 우회·네트워크 사용은 하지 않았으며, 네트워크 가능한 환경에서 새 의존성을 받은 뒤 전체 테스트를 실행해야 한다. 실제 Eureka 등록·Config 수신·컨테이너 종료 유예도 미검증이다.
-- 같은 변경의 정적 확인: application.yml 3개 문서와 Compose YAML 파싱, `docker compose --env-file /dev/null -f compose.match-local.yml config --format json`의 기본값·전환값(두 Feign URL 빈 값, Cloud 활성화, prod/validate) 검증, `git diff --check`가 통과했다. Compose 검증은 가짜 비밀값으로 설정만 렌더링했으며 컨테이너 실행·네트워크 사용은 없었다.
-- 회원 탈퇴 Kafka 수신(4a): `UserWithdrawnKafkaIntegrationTest`의 정상 정리·동일 ID 중복·잘못된 메시지 뒤 정상 처리·동시 PK 삽입 경합 검증을 유지한다. 정리 후 예외의 이력·업무 롤백 테스트는 **5회 연속 실패 후 6번째 성공, 처리 이력 1행**으로 보강하고, 재시도 소진 후 건너뛰던 테스트는 **장애 중 같은 파티션 후속 메시지 대기·복구 후 두 이벤트 처리**로 교체했다. 프로그래밍 오류 1회 후 즉시 건너뛰는 테스트도 추가했다. 모두 실제 그룹 오프셋을 확인한다. `UserWithdrawnKafkaStartupIntegrationTest`는 리스너가 꺼진 상태에서 발행을 완료한 뒤 UUID 기반 새 그룹으로 시작해 선발행 이벤트 처리와 오프셋 확정을 확인한다(`earliest` 테스트 덮어쓰기 없음). `MatchServiceApplicationTests`는 Kafka 없는 기본 설정의 리스너 정지를 검증한다.
-- 4a Codex 샌드박스 실행(2026-10-31): `gradle cleanTest test --offline --no-daemon`은 Gradle 네이티브 서비스의 `libnative-platform.dylib` 로딩 실패로 빌드 시작 전에 중단됐다. **당시 기존·추가 테스트 모두 컴파일·실행 미확인**이었다. 우회·의존성 다운로드·네트워크 사용 없이 종료했다. 실제 유저 발행·Kafka 수신은 미검증이며, MariaDB의 READ_COMMITTED 동작은 후속 4b Claude 실행에서 확인했다.
-- 4a 정적 확인: Ruby YAML 파서로 application.yml 3개 문서와 Kafka 기본값·자동 생성 차단·오프셋 설정을 확인했고, 캐시된 Spring Boot 3.5.4 메타데이터에서 관련 설정 키를 확인했다. Python YAML 파싱 시도는 PyYAML 미설치로 실행되지 않았다. `git diff --check`와 신규 파일 공백 점검도 통과했다. 이 정적 확인은 컴파일·런타임 검증을 대체하지 않는다.
-- 4b 최종 실행(Claude 실행 보고, 2026-10-31): Docker MariaDB 11.4.8에서 **전체 211개 통과·skipped 0**, **MariaDB+Kafka 테스트 3회 반복 통과**. PK 컬럼 순서 단언 수정 후 결과다. **READ_COMMITTED 제거 변이 시 실제 격리 수준 단언 실패**를 확인했다. 기본 REPEATABLE READ의 CLOSED 오류 재현 테스트도 유지한다. 이 결과는 이번 Kafka 수신 보완 전의 Claude 실행 보고이며 Codex의 재실행 결과는 아니다.
-- PR #7 Kafka 수신 보완 후(2026-10-31): **2026-10-31 Claude 실행 보고(샌드박스 밖, Docker MariaDB 11.4.8): `gradle cleanTest test` 213개 통과·skipped 0, `UserWithdrawnKafkaIntegrationTest`·`UserWithdrawnKafkaStartupIntegrationTest`·`MatchMariaDBIntegrationTest` 3회 반복 통과**. Codex의 `gradle test --offline --no-daemon`은 Gradle 네이티브 서비스의 `libnative-platform.dylib` 로딩 실패로 빌드 시작 전에 중단됐다. **컴파일·테스트 미실행**이며 캐시·권한 우회·네트워크 사용은 하지 않았다.
-- 이번 수정의 정적 확인: application.yml 3개 문서의 `earliest`·`record`·자동 생성 차단·백오프 1000/30000ms, Compose Kafka 변수 3개의 기본값·전환값 렌더링, `git diff --check`를 확인했다. 가짜 비밀값과 `--env-file /dev/null`로 설정만 렌더링했으며 컨테이너 실행은 하지 않았다. 컴파일·런타임 검증을 대체하지 않는다.
+**최종 실행(2026-10-31, Docker MariaDB 11.4.8 포함): `gradle cleanTest test` 214개 통과, 실패·건너뜀 0개.**
 
-- Cloud 클라이언트 변경 후 실행 기록(Claude의 샌드박스 밖 실행 보고): 2026-10-31 20:3x KST, 커밋 `055ad89` 기준 `gradle cleanTest test` 197개 통과, `docker build`·Compose 기동 및 `/actuator/health` 200을 확인했다. liveness·readiness는 로컬에서 404였으며 K8s에서 자동 활성화되거나 `management.endpoint.health.probes.enabled=true`로 활성화할 수 있다. `/actuator/env`·`/actuator/beans`는 401, Eureka·Config 오류 로그는 0건이며 graceful shutdown을 확인했다. 실제 Eureka 등록·Config 수신은 미검증이다. 이는 이번 Config 타임아웃 수정 전의 전달받은 실행 결과이며, Codex가 직접 재실행한 결과는 아니다.
+Docker가 없으면 MariaDB 통합 테스트는 실패가 아니라 건너뜀으로 끝난다. 통과 개수만 보지 말고 `build/reports/tests/test/index.html`에서 건너뜀이 0개인지 함께 확인한다.
+
+| 범위 | 테스트 | 확인 내용 |
+|---|---|---|
+| 원본 동작 유지 | 원본 매치 테스트 11개 파일(101개) | 회원·시설 데이터를 메모리 가짜 클라이언트로 바꿔 그대로 통과 |
+| 정원·모집 상태 | `MatchCapacityControllerTest`, `MatchModifyIntegrationTest` | 최소 정원과 전용 오류 응답, 거절 시 DB 보존, 마감·재개, 시작 후 재개 안 함, 참가와 정원 축소 동시 요청 |
+| 잠금 경합 | `MatchLockContentionIntegrationTest` (H2) | 한 트랜잭션이 매치 행 잠금을 잡은 동안 수정·참가·삭제가 실제로 기다리고, 잠금이 풀린 뒤 최종 상태가 맞음 |
+| 회원 탈퇴 정리 | `MatchWithdrawalIntegrationTest` | OWNER 매치 삭제, 본인 참가만 취소, 마감 재개, 시작 후 마감 유지, ID 조회 뒤 커밋된 정원 수정 보존 |
+| Feign HTTP 계약 | `FeignUserClientHttpTest`, `FeignFacilityClientHttpTest` | 실제 Feign과 JDK 내장 HTTP 스텁으로 경로, 반복 ID 쿼리, 한글·선택 파라미터, JSON 매핑, 404/500, 시간 초과, 빈 입력 시 요청 생략 확인. 연결 1초/응답 1500ms는 테스트 전용 값 |
+| 원격 장애 | `MatchRemoteFailureHttpIntegrationTest`, `MatchModifyConnectionFailureHttpIntegrationTest` | 5xx·연결 실패·시간 초과·JSON 오류 시 503, 생성·참가는 저장 안 함, 실패 후 잠금 해제, 수정은 커밋하고 시설·프로필 필드만 null. 원인 예외까지 단언 |
+| 설정 | `MatchServiceApplicationTests`, `CloudProfileConfigurationTest`, `FeignTimeoutConfigurationTest`, `FeignDiscoveryClientHttpTest` | 전체 컨텍스트 기동, Eureka·Config·Kafka 기본 꺼짐, health/info·probe 공개와 다른 Actuator 경로 비노출, 프로필별 설정, 운영 Feign 타임아웃, Eureka 없이 서비스 이름 기반 Feign 호출 |
+| Kafka 탈퇴 수신 | `UserWithdrawnKafkaIntegrationTest`, `UserWithdrawnKafkaStartupIntegrationTest` (EmbeddedKafka) | 정상 정리, 같은 ID 중복, 잘못된 메시지 건너뜀, 동시 PK 충돌, 일시 장애 동안 같은 파티션 대기와 복구 후 처리, 프로그래밍 오류 즉시 건너뜀, 실제 그룹 오프셋 확정, 리스너가 꺼져 있던 동안 발행된 이벤트를 `earliest`로 처리 |
+| 실제 MariaDB | `MatchMariaDBIntegrationTest` (Testcontainers) | 위 [MariaDB 통합 테스트](#mariadb-통합-테스트) 참고 |
+
+테스트가 실제로 문제를 잡는지 일부러 코드를 망가뜨려 확인했다(확인 후 원래대로 되돌림).
+
+- `modifyMatch`의 잠금 조회를 일반 조회로 바꾸면 잠금 경합 테스트가 실패한다.
+- 탈퇴 처리의 `READ_COMMITTED` 지정을 빼면 MariaDB 격리 수준 단언이 실패한다.
+- 정원 수정의 시작 시각 조건을 빼면 `시작 시각이 지난 CLOSED 매치는 정원을 늘려도 모집을 재개하지 않는다` 테스트가 실패한다.
+
+반복 실행(2026-10-31): 잠금 경합·탈퇴 테스트 10회, Kafka·MariaDB 테스트 3회 연속 통과.
+
+Docker 수동 확인(PR #5·#6 시점, Apple Silicon): 이미지 빌드, 비루트 사용자(`uid=10001`), Compose 기동, `/actuator/health` 200, `/actuator/env`·`/actuator/beans` 401, `GET /api/matches` 200 `[]`, `GET /api/matches?isFree=true` 503(체육시설 서비스 없음), Eureka·Config 오류 로그 0건, graceful shutdown. liveness·readiness는 probe를 켜지 않은 로컬에서 404이며 K8s에서는 자동으로 켜진다.
+
+아직 확인하지 않은 것:
+
+- 실제 유저·체육시설 서비스와의 연동(상대 API가 아직 없음)
+- 실제 Eureka 등록·탐색, Config 서버에서 설정 받기
+- 유저 서비스가 실제로 발행한 Kafka 이벤트 수신
+- Docker가 없는 환경에서 MariaDB 테스트가 건너뛰어지는 동작
+- 동시 참가·정원 변경 전체의 MariaDB 검증. MariaDB에서는 탈퇴 정리, 잠금 대기, 중복 처리, 스키마만 확인했다.
+
+옮기지 않은 테스트: 원본 `MatchIntegrationTest`(원본에서도 MariaDB가 필요해 기본 실행에서 빠지던 테스트). 실제 MariaDB 확인은 새 `MatchMariaDBIntegrationTest`로 한다.
 
 ## 임의로 정한 것 (팀 확인 필요)
 
@@ -195,13 +206,13 @@ Compose도 `.env`의 `MATCH_KAFKA_ENABLED`(기본 `false`), `KAFKA_BOOTSTRAP_SER
 
 ## 남은 일
 
-- **회원 탈퇴 연동:** `UserWithdrawn` 구독·처리 이력·무제한 재시도 경계를 추가했다(기본 비활성). 유저 서비스 발행·토픽 준비 후 실제 연동과 이번 Kafka 수신 보완 후 회귀 테스트 실행이 필요하다. 수정 전 Claude 실행 결과는 위 4b 검증 상태에 기록했다.
+- **회원 탈퇴 연동:** `UserWithdrawn` 구독·처리 이력·무제한 재시도 경계를 추가했다(기본 비활성). 유저 서비스 발행·토픽 준비 후 실제 연동 확인이 필요하다.
 - **AI 서비스 연동:** 원본 AI는 `MatchService.searchMatches`와 참가 여부 조회를 직접 썼다. AI 서비스가 `GET /api/matches`를 쓰고, 추천의 "이미 참가한 매치 제외"는 별도 조건이 필요하다.
 - **참가 시 원격 호출 위치:** `joinMatch`는 원본 순서를 지키느라 매치 행 잠금을 잡은 뒤 유저 서비스를 호출한다. 잠금 시간이 길어지지 않게 회원 확인을 잠금 전으로 옮기는 것을 검토한다(에러 우선순위가 바뀌므로 팀 확인 필요).
 - **다른 서비스 장애 시 처리:** 매치 서비스는 `503 / EXTERNAL_SERVICE_UNAVAILABLE` 매핑과 운영 Feign 연결 1000ms·응답 3000ms 적용을 완료했다. 팀 공통 규약은 아직 합의 전이며, Circuit Breaker·Fallback(선택 요구사항 5번)도 검토한다.
 - **수정·참가·삭제 경합 테스트 — 완료:** `MatchLockContentionIntegrationTest`에서 A의 실제 행 잠금 획득 후 B의 조회 반환·서비스 완료가 400ms 동안 대기하고, A 커밋 후 일관된 결과가 저장되는지 단언한다(테스트 H2 `LOCK_TIMEOUT=10000`).
-- **회원 탈퇴 정리의 최신 조회 — 완료:** 엔티티 대신 매치 ID만 오름차순으로 조회한 뒤 잠금 후 읽은 매치·참가 정보로 정리하며, OWNER 삭제·본인만 참가 취소·마감 재개·시작 후 마감 유지와 ID 조회 사이에 커밋된 정원 수정 보존 테스트를 추가했다. 4a에서는 호출 경계의 영속성 컨텍스트 공유를 해결했으며, 4b에서는 ID 수집 후 커밋된 참가자·정원 변경 반영을 실제 MariaDB로 확인했다(Claude 실행, 2026-10-31).
-- **수정 응답 장애 테스트 — 완료:** 실제 Feign의 시설 시간 초과·JSON 오류·연결 거부에서도 수정 200·DB 반영·시설 필드 null을 단언하고, 프로필 정상/시설 500은 시설 요청 기록까지 확인한다. 이번 보강으로 시간 초과·JSON 오류의 실제 예외 원인도 단언하며, 보강분 실행 검증은 별도로 필요하다.
+- **회원 탈퇴 정리의 최신 조회 — 완료:** 엔티티 대신 매치 ID만 오름차순으로 조회한 뒤 잠금 후 읽은 매치·참가 정보로 정리하며, OWNER 삭제·본인만 참가 취소·마감 재개·시작 후 마감 유지와 ID 조회 사이에 커밋된 정원 수정 보존 테스트를 추가했다. 호출 경계의 영속성 컨텍스트 공유는 Kafka 처리 경계의 새 트랜잭션으로 해결했고, ID 수집 후 커밋된 참가자·정원 변경 반영은 실제 MariaDB로 확인했다.
+- **수정 응답 장애 테스트 — 완료:** 실제 Feign의 시설 시간 초과·JSON 오류·연결 거부에서도 수정 200·DB 반영·시설 필드 null을 단언하고, 프로필 정상/시설 500은 시설 요청 기록까지 확인한다. 시간 초과·JSON 오류·연결 거부의 실제 원인 예외(`SocketTimeoutException`, `DecodeException`, `ConnectException`)도 단언한다.
 - **Eureka·Config 실제 연동 및 Gateway:** 클라이언트 연결 준비는 추가했으며 기본값은 비활성이다. 공통 설정 담당(이우진)의 서버가 준비되면 위 환경 변수로 활성화하고 실제 등록·설정 수신을 검증한다. Gateway 연동은 별도 후속 작업이다.
 - **전체 Compose 연동:** 매치 Dockerfile·매치 단독 로컬 Compose는 추가했다. 전체 서비스 Compose 통합은 인프라 담당과 진행한다.
 - **ERD 초안의 포인트·SAGA 컬럼과 새 상태값:** 팀 규칙 확정 후 3단계에서 반영.
@@ -209,7 +220,7 @@ Compose도 `.env`의 `MATCH_KAFKA_ENABLED`(기본 `false`), `KAFKA_BOOTSTRAP_SER
 ## 탈퇴 연동 전 반드시 해결 — 두 항목 해결
 
 - **(1) 구조적 해결 — 완료:** 탈퇴 처리는 Kafka 리스너가 `UserWithdrawnHandler.handle`을 통해 여는 새 `REQUIRES_NEW` 트랜잭션에서만 호출한다. 기존 `Match`가 적재된 영속성 컨텍스트를 공유하지 않으며, 운영에서 `removeMatchesForWithdrawal`은 이 처리 경계 밖에서 호출하지 않는다.
-- **(2) READ_COMMITTED 지정·MariaDB 검증 — 완료(Claude 실행, 2026-10-31):** 처리 경계에 `Isolation.READ_COMMITTED`를 명시했다. 실제 MariaDB 11.4.8에서 ID 수집 후 A 탈퇴·정원 3 수정이 커밋되는 시나리오의 기본 REPEATABLE READ 오류(최종 2명/정원 3/CLOSED)와 READ_COMMITTED 정상 동작(최종 2명/정원 3/RECRUITING)을 모두 확인했다. 오류 재현 테스트는 유지한다. 일반적인 동시 참가·정원 변경 전체의 MariaDB 검증까지 완료한 것으로 해석하지 않는다.
+- **(2) READ_COMMITTED 지정·MariaDB 검증 — 완료:** 처리 경계에 `Isolation.READ_COMMITTED`를 명시했다. 실제 MariaDB 11.4.8에서 ID 수집 후 A 탈퇴·정원 3 수정이 커밋되는 시나리오의 기본 REPEATABLE READ 오류(최종 2명/정원 3/CLOSED)와 READ_COMMITTED 정상 동작(최종 2명/정원 3/RECRUITING)을 모두 확인했다. 오류 재현 테스트는 유지한다. 일반적인 동시 참가·정원 변경 전체의 MariaDB 검증까지 완료한 것으로 해석하지 않는다.
 
 ## 알려진 한계
 
