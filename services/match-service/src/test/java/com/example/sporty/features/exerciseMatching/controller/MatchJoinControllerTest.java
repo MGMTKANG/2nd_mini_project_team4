@@ -247,6 +247,23 @@ class MatchJoinControllerTest {
         assertThat(match.getStatus()).isEqualTo(MatchStatus.RECRUITING);
     }
 
+    @Test
+    @DisplayName("탈퇴 회원의 참가 요청은 401과 USER_WITHDRAWN을 반환하고 모집 상태를 유지한다")
+    void withdrawnUserReturnsUnauthorized() throws Exception {
+        MatchEntity match = givenMatch(MatchStatus.RECRUITING, LocalDateTime.now().plusDays(1));
+        FakeUserClient fakeUserClient = new FakeUserClient();
+        Long withdrawnUserId = fakeUserClient.addActiveUser();
+        fakeUserClient.withdraw(withdrawnUserId);
+        when(userClient.findUser(withdrawnUserId)).thenReturn(fakeUserClient.findUser(withdrawnUserId));
+
+        mvc.perform(post("/api/matches/201/participants").header("Authorization", bearer(withdrawnUserId)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("USER_WITHDRAWN"));
+
+        verifyNoInteractions(matchParticipantRepository);
+        assertThat(match.getStatus()).isEqualTo(MatchStatus.RECRUITING);
+    }
+
     private MatchEntity givenMatch(MatchStatus status, LocalDateTime startAt) {
         // 토큰의 사용자는 유저 서비스에 존재하는 활성 회원으로 응답한다.
         when(userClient.findUser(anyLong())).thenAnswer(invocation ->

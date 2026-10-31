@@ -44,6 +44,7 @@ import com.example.sporty.features.commons.exception.exerciseMatching.MatchFullE
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchNotFoundException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchRecruitmentClosedException;
 import com.example.sporty.features.commons.exception.matches.MatchUserNotFoundException;
+import com.example.sporty.features.commons.exception.matches.WithdrawnUserFoundException;
 import com.example.sporty.features.commons.util.SportType;
 import com.example.sporty.features.exerciseMatching.domain.dto.MatchParticipantResponseDto;
 import com.example.sporty.features.exerciseMatching.domain.entity.MatchEntity;
@@ -252,6 +253,21 @@ class MatchJoinIntegrationTest {
                 .isInstanceOf(MatchUserNotFoundException.class);
 
         assertThat(participantIds(matchId)).containsExactlyElementsOf(before);
+        assertState(matchId, 1, MatchStatus.RECRUITING);
+    }
+
+    @Test
+    @DisplayName("탈퇴 회원의 신청은 참가 기록과 모집 상태를 변경하지 않는다")
+    void withdrawnUserPreservesData() {
+        Long matchId = createMatch(2, MatchStatus.RECRUITING, LocalDateTime.now().plusDays(1));
+        List<Long> before = participantIds(matchId);
+        fakeUserClient.withdraw(userId(2L));
+
+        assertThatThrownBy(() -> matchService.joinMatch(matchId, userId(2L)))
+                .isInstanceOf(WithdrawnUserFoundException.class);
+
+        assertThat(participantIds(matchId)).containsExactlyElementsOf(before);
+        assertThat(matchParticipantRepository.existsByMatch_IdAndUserId(matchId, userId(2L))).isFalse();
         assertState(matchId, 1, MatchStatus.RECRUITING);
     }
 

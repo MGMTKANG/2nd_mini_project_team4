@@ -147,8 +147,12 @@ public class MatchService {
         MatchEntity match = matchRepository.findByIdForUpdate(matchId)
                 .orElseThrow(MatchNotFoundException::new);
 
-        userClient.findUser(userId)
+        UserSummary user = userClient.findUser(userId)
                 .orElseThrow(MatchUserNotFoundException::new);
+
+        if (!user.isActive()) {
+            throw new WithdrawnUserFoundException();
+        }
 
         // OWNER도 이미 등록된 참가자이므로 역할과 관계없이 중복 참여를 막는다.
         if (matchParticipantRepository.existsByMatch_IdAndUserId(matchId, userId)) {
