@@ -15,6 +15,7 @@ import com.example.sporty.features.commons.exception.exerciseMatching.MatchOwner
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchParticipantNotFoundException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchAlreadyJoinedException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchAlreadyStartedException;
+import com.example.sporty.features.commons.exception.exerciseMatching.MatchCapacityBelowParticipantsException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchFullException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchRecruitmentClosedException;
 import com.example.sporty.features.exerciseMatching.client.FacilityClient;
@@ -197,7 +198,7 @@ public class MatchService {
     // EM-05: 참가 기록과 매치를 한 트랜잭션에서 삭제한다.
     @Transactional
     public void deleteMatch(Long matchId, Long userId) {
-        MatchEntity match = matchRepository.findById(matchId)
+        MatchEntity match = matchRepository.findByIdForUpdate(matchId)
                 .orElseThrow(MatchNotFoundException::new);
 
         matchParticipantRepository.findByMatch_IdAndUserId(matchId, userId)
@@ -251,8 +252,8 @@ public class MatchService {
         Long userId,
         MatchModifyRequestDto req
     ) {
-        // 매치 조회
-        MatchEntity match = matchRepository.findById(matchId)
+        // 참가·탈퇴·삭제와 같은 매치 행 잠금을 먼저 획득한다.
+        MatchEntity match = matchRepository.findByIdForUpdate(matchId)
                 .orElseThrow(MatchNotFoundException::new);
 
         // 생성자 권한 확인
@@ -260,7 +261,12 @@ public class MatchService {
                 .filter(participant -> participant.getRole() == MatchParticipantRole.OWNER)
                 .orElseThrow(MatchModifyForbiddenException::new);
 
-        // 업데이트
+        // OWNER를 포함한 현재 인원을 확인하고, 거절 시 어떤 필드도 변경하지 않는다.
+        long participantCount = matchParticipantRepository.countByMatch_Id(matchId);
+        if (req.getMaxParticipant() < participantCount) {
+            throw new MatchCapacityBelowParticipantsException();
+        }
+        boolean capacityChanged = !match.getMaxParticipant().equals(req.getMaxParticipant());
 
         match.update(
             req.getTitle(),
@@ -271,6 +277,14 @@ public class MatchService {
             req.getSkillLevel(),
             req.getGenderGroup()
         );
+
+        if (capacityChanged) {
+            if (participantCount == match.getMaxParticipant()) {
+                match.closeRecruitment();
+            } else {
+                match.reopenRecruitment();
+            }
+        }
 
         return getMatchDetail(matchId, userId);
     }

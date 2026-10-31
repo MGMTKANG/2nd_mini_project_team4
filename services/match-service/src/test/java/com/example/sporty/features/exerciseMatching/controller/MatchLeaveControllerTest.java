@@ -118,7 +118,7 @@ class MatchLeaveControllerTest {
         verifyNoMoreInteractions(matchRepository, matchParticipantRepository);
 
         MatchEntity match = MatchEntity.builder().id(303L).build();
-        when(matchRepository.findById(303L)).thenReturn(Optional.of(match));
+        when(matchRepository.findByIdForUpdate(303L)).thenReturn(Optional.of(match));
         mvc.perform(delete("/api/matches/303")
                         .header("Authorization", "Bearer " + jwtProvider.createAccessToken(1L)))
                 .andExpect(status().isNoContent())

@@ -87,6 +87,8 @@ class MatchDeleteControllerTest {
                 .andExpect(content().string(""));
 
         InOrder order = inOrder(matchParticipantRepository, matchRepository);
+        order.verify(matchRepository).findByIdForUpdate(101L);
+        order.verify(matchParticipantRepository).findByMatch_IdAndUserId(101L, 1L);
         order.verify(matchParticipantRepository).deleteAllByMatch_Id(101L);
         order.verify(matchRepository).delete(match);
         verifyNoInteractions(userClient);
@@ -95,7 +97,7 @@ class MatchDeleteControllerTest {
     @Test
     @DisplayName("[EM05-002] 없는 매치는 404이며 삭제를 실행하지 않는다")
     void missingMatchReturnsNotFound() throws Exception {
-        when(matchRepository.findById(99999L)).thenReturn(Optional.empty());
+        when(matchRepository.findByIdForUpdate(99999L)).thenReturn(Optional.empty());
 
         mvc.perform(delete("/api/matches/99999")
                         .header("Authorization", "Bearer " + jwtProvider.createAccessToken(1L)))
@@ -184,7 +186,7 @@ class MatchDeleteControllerTest {
 
     private MatchEntity givenMatch(Long matchId) {
         MatchEntity match = MatchEntity.builder().id(matchId).build();
-        when(matchRepository.findById(matchId)).thenReturn(Optional.of(match));
+        when(matchRepository.findByIdForUpdate(matchId)).thenReturn(Optional.of(match));
         return match;
     }
 

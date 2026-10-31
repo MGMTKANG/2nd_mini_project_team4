@@ -160,11 +160,19 @@ class MatchJoinIntegrationTest {
     @Test
     @DisplayName("[EM06-004] RECRUITING이지만 이미 정원이 가득 찬 경우에도 참가 정보가 추가되지 않는다")
     void fullMatchPreservesData() {
-        Long matchId = createMatch(1, MatchStatus.RECRUITING, LocalDateTime.now().plusDays(1));
+        Long matchId = createMatch(2, MatchStatus.RECRUITING, LocalDateTime.now().plusDays(1));
+        // 정원 2에 OWNER와 일반 참가자를 직접 저장해 상태 불일치 방어를 검증한다.
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            MatchEntity match = matchRepository.findById(matchId).orElseThrow();
+            matchParticipantRepository.save(MatchParticipantEntity.builder()
+                    .match(match).userId(userId(2L)).role(MatchParticipantRole.PARTICIPANT).build());
+        });
+        List<Long> before = participantIds(matchId);
 
-        assertThatThrownBy(() -> matchService.joinMatch(matchId, userId(2L))).isInstanceOf(MatchFullException.class);
+        assertThatThrownBy(() -> matchService.joinMatch(matchId, userId(3L))).isInstanceOf(MatchFullException.class);
 
-        assertState(matchId, 1, MatchStatus.RECRUITING);
+        assertThat(participantIds(matchId)).containsExactlyElementsOf(before);
+        assertState(matchId, 2, MatchStatus.RECRUITING);
     }
 
     @Test

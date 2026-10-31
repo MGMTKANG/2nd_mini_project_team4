@@ -10,6 +10,7 @@ import com.example.sporty.features.commons.exception.exerciseMatching.MatchOwner
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchParticipantNotFoundException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchAlreadyJoinedException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchAlreadyStartedException;
+import com.example.sporty.features.commons.exception.exerciseMatching.MatchCapacityBelowParticipantsException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchFullException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchRecruitmentClosedException;
 import com.example.sporty.features.commons.exception.users.UserNotFoundException;
@@ -81,6 +82,16 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.builder()
                         .code("MATCH_FULL")
+                        .message(e.getMessage())
+                        .build());
+    }
+
+    @ExceptionHandler(MatchCapacityBelowParticipantsException.class)
+    public ResponseEntity<ErrorResponse> handleMatchCapacityBelowParticipants(
+            MatchCapacityBelowParticipantsException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.builder()
+                        .code("MATCH_CAPACITY_BELOW_PARTICIPANTS")
                         .message(e.getMessage())
                         .build());
     }
