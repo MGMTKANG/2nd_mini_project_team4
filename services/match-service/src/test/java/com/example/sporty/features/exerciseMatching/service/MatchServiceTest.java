@@ -18,6 +18,7 @@ import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 
@@ -282,7 +283,7 @@ class MatchServiceTest {
         }
 
         try (MockedStatic<LocalDateTime> clock = mockStatic(LocalDateTime.class)) {
-            clock.when(LocalDateTime::now).thenReturn(now);
+            clock.when(() -> LocalDateTime.now(ZoneId.of("Asia/Seoul"))).thenReturn(now);
             matchService.leaveMatch(301L, 2L);
         }
 

@@ -32,6 +32,7 @@ COPY --from=builder --chown=sporty:sporty /home/gradle/build/libs/match-service-
 
 USER sporty
 ENV JAVA_OPTS=""
+ENV TZ=Asia/Seoul
 EXPOSE 8082
 # JAVA_OPTS에는 공백으로 구분한 JVM 옵션을 전달한다. exec로 종료 신호를 JVM에 전달한다.
 ENTRYPOINT ["sh", "-c", "exec java -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 $JAVA_OPTS -jar /app/app.jar \"$@\"", "--"]

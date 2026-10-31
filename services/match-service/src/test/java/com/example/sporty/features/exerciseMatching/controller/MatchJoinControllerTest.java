@@ -24,6 +24,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
@@ -51,6 +52,7 @@ import com.example.sporty.features.exerciseMatching.domain.enums.MatchStatus;
 import com.example.sporty.features.exerciseMatching.repository.MatchParticipantRepository;
 import com.example.sporty.features.exerciseMatching.repository.MatchRepository;
 import com.example.sporty.features.exerciseMatching.service.MatchService;
+import com.example.sporty.features.exerciseMatching.service.MatchUserGuard;
 
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
@@ -60,6 +62,7 @@ import io.jsonwebtoken.security.Keys;
 @Import({MatchService.class, SecurityConfig.class, JwtAuthenticationFilter.class})
 @TestPropertySource(properties = "jwt.secret=test-only-signing-secret-with-at-least-32-bytes")
 class MatchJoinControllerTest {
+    @MockitoBean private MatchUserGuard userGuard;
 
     private static final String SECRET = "test-only-signing-secret-with-at-least-32-bytes";
     private final JwtProvider jwtProvider = new JwtProvider(SECRET);
@@ -176,7 +179,7 @@ class MatchJoinControllerTest {
         }
 
         try (MockedStatic<LocalDateTime> time = mockStatic(LocalDateTime.class, CALLS_REAL_METHODS)) {
-            time.when(LocalDateTime::now).thenReturn(now);
+            time.when(() -> LocalDateTime.now(ZoneId.of("Asia/Seoul"))).thenReturn(now);
             var result = mvc.perform(post("/api/matches/201/participants")
                     .header("Authorization", bearer(2L)));
             if (secondsAfterStart < 0) {
