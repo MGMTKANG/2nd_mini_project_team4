@@ -15,7 +15,26 @@ spring:
     lifecycle:
         timeout-per-shutdown-phase: 20s
 
+    kafka:
+        bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+        admin:
+            auto-create: false
+        consumer:
+            group-id: match-service
+            enable-auto-commit: false
+            key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+            value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+            properties:
+                "[allow.auto.create.topics]": false
+        listener:
+            auto-startup: ${MATCH_KAFKA_ENABLED:false}
+            ack-mode: record
+
     cloud:
+        loadbalancer:
+            retry:
+                # 잠금 안 원격 호출 시간을 예측 가능하게 유지하도록 자동 재시도를 끈다.
+                enabled: false
         config:
             enabled: ${CONFIG_ENABLED:false}
             request-connect-timeout: ${CONFIG_CONNECT_TIMEOUT_MS:2000}
@@ -57,6 +76,10 @@ management:
 
 jwt:
     secret: ${JWT_SECRET_KEY}
+
+match:
+    events:
+        user-withdrawn-topic: ${USER_WITHDRAWN_TOPIC:user.withdrawn}
 
 # 유저·체육시설 서비스 주소. Eureka 연동 후에는 url을 비우고 서비스 이름으로 찾는다.
 clients:
