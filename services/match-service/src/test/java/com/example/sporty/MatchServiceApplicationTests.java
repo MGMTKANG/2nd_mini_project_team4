@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.env.Environment;
+import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.example.sporty.features.exerciseMatching.client.FacilityClient;
@@ -47,6 +48,9 @@ class MatchServiceApplicationTests {
     @Autowired
     private MockMvc mvc;
 
+    @Autowired
+    private KafkaListenerEndpointRegistry kafkaListeners;
+
     @Test
     void contextLoadsWithFeignClients() {
         assertThat(userClient).isInstanceOf(FeignUserClient.class);
@@ -58,6 +62,17 @@ class MatchServiceApplicationTests {
         // 이 두 값은 테스트에서 덮어쓰지 않고 application.yml의 기본값을 검증한다.
         assertThat(environment.getProperty("eureka.client.enabled", Boolean.class)).isFalse();
         assertThat(environment.getProperty("spring.cloud.config.enabled", Boolean.class)).isFalse();
+    }
+
+    @Test
+    void kafkaListenerDoesNotStartByDefaultWithoutBroker() {
+        // MATCH_KAFKA_ENABLED는 테스트에서 지정하지 않는다. EmbeddedKafka도 사용하지 않는다.
+        assertThat(environment.getProperty("spring.kafka.listener.auto-startup", Boolean.class)).isFalse();
+        assertThat(environment.getProperty("spring.kafka.admin.auto-create", Boolean.class)).isFalse();
+        var listener = kafkaListeners.getListenerContainer("userWithdrawnListener");
+        assertThat(listener).isNotNull();
+        assertThat(listener.isAutoStartup()).isFalse();
+        assertThat(listener.isRunning()).isFalse();
     }
 
     @Test

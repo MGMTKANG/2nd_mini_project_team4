@@ -125,7 +125,10 @@ public class MatchService {
         }
     }
 
-    /** [USR-04] 회원탈퇴: 생성한 매치는 전체 삭제, 다른 매치에서는 본인 참가 기록만 삭제한다. */
+    /**
+     * [USR-04] 회원탈퇴: 생성한 매치는 전체 삭제, 다른 매치에서는 본인 참가 기록만 삭제한다.
+     * 운영 호출은 UserWithdrawnHandler의 새 READ_COMMITTED 트랜잭션 경계 안에서만 한다.
+     */
     @Transactional
     public void removeMatchesForWithdrawal(Long userId) {
         List<Long> matchIds = matchParticipantRepository
