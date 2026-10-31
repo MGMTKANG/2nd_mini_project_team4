@@ -23,6 +23,8 @@ class CloudProfileConfigurationTest {
                     .isEqualTo("local".equals(profile));
             assertThat(environment.getProperty("eureka.client.enabled", Boolean.class)).isFalse();
             assertThat(environment.getProperty("spring.cloud.config.enabled", Boolean.class)).isFalse();
+            assertThat(environment.getProperty("spring.cloud.config.request-connect-timeout", Integer.class)).isEqualTo(2000);
+            assertThat(environment.getProperty("spring.cloud.config.request-read-timeout", Integer.class)).isEqualTo(5000);
             assertThat(environment.getProperty("spring.jpa.hibernate.ddl-auto")).isEqualTo("update");
         });
     }

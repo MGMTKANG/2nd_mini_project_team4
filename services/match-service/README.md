@@ -32,6 +32,8 @@ MATCH_DB_USERNAME=... MATCH_DB_PASSWORD=... ./gradlew bootRun
 | `EUREKA_URL` | `http://localhost:8761/eureka/` | Eureka 서버 주소 |
 | `CONFIG_ENABLED` | `false` | Config 클라이언트 활성화 여부 |
 | `CONFIG_SERVER_URL` | `http://localhost:8888` | Config 서버 주소(`optional:configserver:`로 가져옴) |
+| `CONFIG_CONNECT_TIMEOUT_MS` | `2000` | Config 서버 연결 타임아웃(밀리초) |
+| `CONFIG_READ_TIMEOUT_MS` | `5000` | Config 서버 읽기 타임아웃(밀리초) |
 | `MATCH_JPA_DDL_AUTO` | `update` | Hibernate 스키마 처리. 운영 권장값은 `validate` |
 | `SPRING_PROFILES_ACTIVE` | 미지정 시 `local` | `local` / `dev` / `prod`. Compose 기본값도 `local` |
 
@@ -95,6 +97,8 @@ Actuator 웹 노출은 `health,info`뿐이며 두 경로는 비로그인 접근�
 - Cloud 클라이언트 변경 전 실행 기록(Claude 실행 보고): 2026-10-31 20:1x KST, Claude가 샌드박스 밖에서 `gradle cleanTest test` 181개 통과 및 잠금 경합·탈퇴 테스트 10회 반복 통과를 확인했다. `modifyMatch`의 잠금 조회를 일반 조회로 바꾸면 경합 테스트가 실패하는 변이 확인 후 원복했다. 이는 예외 원인 단언 보강 전의 실행 기록이며, Codex가 원본 실행 로그를 재검증한 결과는 아니다.
 - Cloud 클라이언트 변경 후 Codex 실행(2026-10-31): `gradle cleanTest test --offline --no-daemon`은 Gradle 네이티브 서비스의 `libnative-platform.dylib` 로딩 실패로 빌드 시작 전에 중단됐다. **기존·추가 테스트 모두 컴파일·실행 미확인**이다. 우회·네트워크 사용은 하지 않았으며, 네트워크 가능한 환경에서 새 의존성을 받은 뒤 전체 테스트를 실행해야 한다. 실제 Eureka 등록·Config 수신·컨테이너 종료 유예도 미검증이다.
 - 같은 변경의 정적 확인: application.yml 3개 문서와 Compose YAML 파싱, `docker compose --env-file /dev/null -f compose.match-local.yml config --format json`의 기본값·전환값(두 Feign URL 빈 값, Cloud 활성화, prod/validate) 검증, `git diff --check`가 통과했다. Compose 검증은 가짜 비밀값으로 설정만 렌더링했으며 컨테이너 실행·네트워크 사용은 없었다.
+
+- Cloud 클라이언트 변경 후 실행 기록(Claude의 샌드박스 밖 실행 보고): 2026-10-31 20:3x KST, 커밋 `055ad89` 기준 `gradle cleanTest test` 197개 통과, `docker build`·Compose 기동 및 `/actuator/health` 200을 확인했다. liveness·readiness는 로컬에서 404였으며 K8s에서 자동 활성화되거나 `management.endpoint.health.probes.enabled=true`로 활성화할 수 있다. `/actuator/env`·`/actuator/beans`는 401, Eureka·Config 오류 로그는 0건이며 graceful shutdown을 확인했다. 실제 Eureka 등록·Config 수신은 미검증이다. 이는 이번 Config 타임아웃 수정 전의 전달받은 실행 결과이며, Codex가 직접 재실행한 결과는 아니다.
 
 ## 임의로 정한 것 (팀 확인 필요)
 

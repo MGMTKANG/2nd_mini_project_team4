@@ -18,6 +18,8 @@ spring:
     cloud:
         config:
             enabled: ${CONFIG_ENABLED:false}
+            request-connect-timeout: ${CONFIG_CONNECT_TIMEOUT_MS:2000}
+            request-read-timeout: ${CONFIG_READ_TIMEOUT_MS:5000}
         openfeign:
             client:
                 config:
