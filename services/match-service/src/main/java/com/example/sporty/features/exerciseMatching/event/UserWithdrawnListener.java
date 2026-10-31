@@ -2,6 +2,7 @@ package com.example.sporty.features.exerciseMatching.event;
 
 import java.util.UUID;
 
+import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
@@ -22,8 +23,17 @@ public class UserWithdrawnListener {
 
     @KafkaListener(id = "userWithdrawnListener", idIsGroup = false,
             topics = "${match.events.user-withdrawn-topic}")
+    public void onRecord(ConsumerRecord<String, String> record) {
+        handleMessage(record.value(), record.topic(), record.partition(), record.offset());
+    }
+
+    // Kafka 외의 직접 호출 테스트도 동일한 처리 경계를 사용한다.
     public void onMessage(String message) {
-        String eventId;
+        handleMessage(message, "direct", -1, -1L);
+    }
+
+    private void handleMessage(String message, String topic, int partition, long offset) {
+        String eventId = "unknown";
         long userId;
         try {
             JsonNode envelope = objectMapper.reader()
@@ -47,7 +57,8 @@ public class UserWithdrawnListener {
             userId = rawUserId.longValue();
         } catch (JsonProcessingException | IllegalArgumentException exception) {
             // 원문에는 개인 정보가 포함될 수 있으므로 로그에 남기지 않는다.
-            log.warn("잘못된 회원 탈퇴 이벤트 건너뜀 ({})", exception.getClass().getSimpleName());
+            log.error("잘못된 회원 탈퇴 이벤트 건너뜀: topic={}, partition={}, offset={}, eventId={}, error={}",
+                    topic, partition, offset, eventId, exception.getClass().getSimpleName());
             return;
         }
 

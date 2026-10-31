@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mockingDetails;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
@@ -68,7 +69,8 @@ import com.example.sporty.features.exerciseMatching.service.MatchService;
         "jwt.secret=test-only-signing-secret-with-at-least-32-bytes",
         "MATCH_KAFKA_ENABLED=true",
         "USER_WITHDRAWN_TOPIC=match-user-withdrawn-test",
-        "spring.kafka.consumer.auto-offset-reset=earliest"
+        "match.kafka.retry.initial-interval-ms=10",
+        "match.kafka.retry.max-interval-ms=50"
 })
 @EmbeddedKafka(partitions = 1, topics = "match-user-withdrawn-test",
         bootstrapServersProperty = "spring.kafka.bootstrap-servers")
@@ -169,7 +171,7 @@ class UserWithdrawnKafkaIntegrationTest {
     }
 
     @Test
-    void failureRollsBackCleanupAndReceiptBeforeSuccessfulRetry() throws Exception {
+    void fiveDatabaseFailuresRollBackCleanupAndReceiptBeforeSuccessfulRetry() throws Exception {
         Long owned = createMatch(WITHDRAWN_USER, 3);
         String eventId = UUID.randomUUID().toString();
         AtomicInteger attempts = new AtomicInteger();
@@ -186,7 +188,7 @@ class UserWithdrawnKafkaIntegrationTest {
             assertThat(TransactionSynchronizationManager.getCurrentTransactionIsolationLevel())
                     .isEqualTo(java.sql.Connection.TRANSACTION_READ_COMMITTED);
             invocation.callRealMethod();
-            if (attempts.incrementAndGet() == 1) {
+            if (attempts.incrementAndGet() <= 5) {
                 throw new DataAccessResourceFailureException("test: fail after cleanup");
             }
             return null;
@@ -195,28 +197,73 @@ class UserWithdrawnKafkaIntegrationTest {
         sendAndAwaitCommit(event(eventId, WITHDRAWN_USER));
 
         assertThat(rollbackObserved).isTrue();
-        assertThat(attempts).hasValue(2);
-        assertThat(inserts).hasValue(2);
+        assertThat(attempts).hasValue(6);
+        assertThat(inserts).hasValue(6);
         assertThat(matches.existsById(owned)).isFalse();
         assertThat(processedEvents.count()).isEqualTo(1);
+        assertThat(processedEvents.existsById(id(eventId))).isTrue();
+        verify(matchService, times(6)).removeMatchesForWithdrawal(WITHDRAWN_USER);
     }
 
     @Test
-    void exhaustedDatabaseRetriesSkipRecordAndAllowNextEvent() throws Exception {
+    void databaseRetriesHoldFollowingRecordInSamePartitionUntilRecovery() throws Exception {
+        Long failedUserMatch = createMatch(2L, 3);
+        Long nextUserMatch = createMatch(WITHDRAWN_USER, 3);
+        String failedEventId = UUID.randomUUID().toString();
+        String nextEventId = UUID.randomUUID().toString();
+        CountDownLatch fiveFailures = new CountDownLatch(5);
+        AtomicBoolean recovered = new AtomicBoolean();
+        doAnswer(invocation -> {
+            if (!recovered.get()) {
+                fiveFailures.countDown();
+                throw new DataAccessResourceFailureException("test: database failure");
+            }
+            return invocation.callRealMethod();
+        }).when(matchService).removeMatchesForWithdrawal(2L);
+
+        RecordMetadata failed = send(event(failedEventId, 2L));
+        RecordMetadata next = send(event(nextEventId, WITHDRAWN_USER));
+        try {
+            assertThat(fiveFailures.await(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(processedEvents.count()).isZero();
+            assertThat(matches.existsById(failedUserMatch)).isTrue();
+            assertThat(matches.existsById(nextUserMatch)).isTrue();
+            verify(matchService, never()).removeMatchesForWithdrawal(WITHDRAWN_USER);
+            var offsets = admin.listConsumerGroupOffsets("match-service")
+                    .partitionsToOffsetAndMetadata().get(2, TimeUnit.SECONDS);
+            var committed = offsets.get(new TopicPartition(TOPIC, failed.partition()));
+            if (committed != null) {
+                assertThat(committed.offset()).isLessThanOrEqualTo(failed.offset());
+            }
+        } finally {
+            recovered.set(true);
+            // 단언 실패 시에도 미완료 재시도가 다음 테스트로 새지 않게 기다린다.
+            awaitCommit(next);
+        }
+
+        assertThat(matches.existsById(failedUserMatch)).isFalse();
+        assertThat(matches.existsById(nextUserMatch)).isFalse();
+        assertThat(processedEvents.existsById(id(failedEventId))).isTrue();
+        assertThat(processedEvents.existsById(id(nextEventId))).isTrue();
+        assertThat(processedEvents.count()).isEqualTo(2);
+    }
+
+    @Test
+    void programmingErrorIsSkippedWithoutRetryAndFollowingEventIsProcessed() throws Exception {
         Long failedUserMatch = createMatch(2L, 3);
         Long nextUserMatch = createMatch(WITHDRAWN_USER, 3);
         String failedEventId = UUID.randomUUID().toString();
         doAnswer(invocation -> {
-            throw new DataAccessResourceFailureException("test: database failure");
+            throw new NullPointerException("test: programming error");
         }).when(matchService).removeMatchesForWithdrawal(2L);
 
         sendAndAwaitCommit(event(failedEventId, 2L));
-        assertThat(processedEvents.existsById(id(failedEventId))).isFalse();
-        assertThat(matches.existsById(failedUserMatch)).isTrue();
-        verify(matchService, times(3)).removeMatchesForWithdrawal(2L);
-
         sendAndAwaitCommit(event(UUID.randomUUID().toString(), WITHDRAWN_USER));
+
+        verify(matchService, times(1)).removeMatchesForWithdrawal(2L);
+        assertThat(matches.existsById(failedUserMatch)).isTrue();
         assertThat(matches.existsById(nextUserMatch)).isFalse();
+        assertThat(processedEvents.existsById(id(failedEventId))).isFalse();
         assertThat(processedEvents.count()).isEqualTo(1);
     }
 
@@ -260,7 +307,10 @@ class UserWithdrawnKafkaIntegrationTest {
     }
 
     private void sendAndAwaitCommit(String message) throws Exception {
-        RecordMetadata record = send(message);
+        awaitCommit(send(message));
+    }
+
+    private void awaitCommit(RecordMetadata record) throws Exception {
         TopicPartition partition = new TopicPartition(TOPIC, record.partition());
         // DB 반영만 기다리면 중복·무효 이벤트의 소비 완료를 알 수 없어 실제 오프셋도 확인한다.
         await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> {

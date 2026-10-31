@@ -21,6 +21,7 @@ spring:
             auto-create: false
         consumer:
             group-id: match-service
+            auto-offset-reset: earliest
             enable-auto-commit: false
             key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
             value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
@@ -80,6 +81,10 @@ jwt:
 match:
     events:
         user-withdrawn-topic: ${USER_WITHDRAWN_TOPIC:user.withdrawn}
+    kafka:
+        retry:
+            initial-interval-ms: 1000
+            max-interval-ms: 30000
 
 # 유저·체육시설 서비스 주소. Eureka 연동 후에는 url을 비우고 서비스 이름으로 찾는다.
 clients:
