@@ -48,6 +48,7 @@ MATCH_DB_USERNAME=... MATCH_DB_PASSWORD=... ./gradlew bootRun
 
 - 체육시설 서비스 응답에 해당 시설이 없으면 목록·내 매치·상세의 시설 조회 필드는 `null`로 반환한다(상세의 `serviceId`는 유지한다). 원본은 시설 FK/JOIN을 전제로 한다.
 - 유저·체육시설 호출의 HTTP 오류·연결 실패·타임아웃·JSON 해석 실패와 필수 필드 누락은 `503`, `{"code":"EXTERNAL_SERVICE_UNAVAILABLE","message":"..."}`로 반환한다. 회원 단건 조회 404는 기존처럼 빈 결과로 처리한다(참가 시 `401 / MATCH_USER_NOT_FOUND`). 운영 Feign 타임아웃은 연결 1000ms·응답 3000ms이며, 참가의 잠금 후 회원 조회 순서는 유지한다.
+- `read-timeout`은 호출 1건의 응답 대기 상한이며 전체 요청·잠금 점유 시간의 상한은 아니다. 잠금 안에서 원격 호출을 여러 번 하면(예: 수정 응답의 프로필→시설 순차 조회) 대기 시간이 합쳐질 수 있다.
 - 매치 수정 후 응답 조합 중 원격 장애가 나면 같은 트랜잭션 경계 안에서 처리해 수정을 커밋하고 `200`을 반환한다. 이때 시설 조회 필드(`serviceName`, `locationName`, `region`)와 참가자 프로필 필드(`profileId`, `nickname`, `imageUrl`)는 `null`이며 시설 ID·참가 인원·역할·권한은 유지한다. 생성·참가는 저장 전 원격 확인에 실패하면 `503`이며 매치·참가자를 저장하지 않는다.
 - 회원 탈퇴 정리 메서드 `removeMatchesForWithdrawal`은 신규 서비스 내 호출자가 없어 아직 연동하지 않았다.
 
@@ -61,7 +62,8 @@ MATCH_DB_USERNAME=... MATCH_DB_PASSWORD=... ./gradlew bootRun
 - 옮기지 않은 테스트: `MatchIntegrationTest`(원본도 MariaDB 연결이 필요해 기본 실행에서 제외되던 테스트).
 - 실제 유저·체육시설 서비스와 연결한 동작은 아직 확인하지 않았다(상대 API가 아직 없음).
 - 정원·잠금 회귀 테스트 추가: `MatchCapacityControllerTest`(최소 정원 입력·전용 오류 응답), `MatchModifyIntegrationTest`(거절 후 DB 보존·마감/재개·참가와 축소 동시 요청). 동시성 검증 대상 DB는 H2이며 MariaDB 검증은 별도로 필요하다.
-- 이번 수정의 컴파일·테스트는 미실행(2026-10-31): `gradle test --offline --tests 'com.example.sporty.features.exerciseMatching.controller.*' --tests 'com.example.sporty.features.exerciseMatching.service.*'`가 `~/.gradle/native/.../libnative-platform.dylib.lock` 쓰기 권한 오류로 빌드 시작 전에 중단됐다. 캐시·권한 우회 없이 종료했으며 실행 가능한 환경에서 재검증해야 한다.
+- Codex 샌드박스 실행 이력(2026-10-31): Gradle이 `~/.gradle/native/.../libnative-platform.dylib.lock` 쓰기 권한 오류로 빌드 시작 전에 중단돼 컴파일·테스트는 미실행이었다. 캐시·권한 우회 없이 종료했다.
+- 이후 Claude가 샌드박스 밖에서 실행한 최신 기록: 2026-10-31 19:42 KST, `gradle cleanTest test` 172개 통과(일부 파라미터화 테스트의 확장 실행 포함). 이번 README 정정·경고 로그 추가 전의 실행 기록이다.
 
 ## 임의로 정한 것 (팀 확인 필요)
 
@@ -94,7 +96,10 @@ MATCH_DB_USERNAME=... MATCH_DB_PASSWORD=... ./gradlew bootRun
 - **회원 탈퇴 연동:** 원본은 `UserService`가 `removeMatchesForWithdrawal`을 같은 트랜잭션에서 호출했다. 지금은 호출하는 곳이 없다. Kafka 이벤트(예: `UserWithdrawn`) 구독 또는 내부 API로 연결해야 한다.
 - **AI 서비스 연동:** 원본 AI는 `MatchService.searchMatches`와 참가 여부 조회를 직접 썼다. AI 서비스가 `GET /api/matches`를 쓰고, 추천의 "이미 참가한 매치 제외"는 별도 조건이 필요하다.
 - **참가 시 원격 호출 위치:** `joinMatch`는 원본 순서를 지키느라 매치 행 잠금을 잡은 뒤 유저 서비스를 호출한다. 잠금 시간이 길어지지 않게 회원 확인을 잠금 전으로 옮기는 것을 검토한다(에러 우선순위가 바뀌므로 팀 확인 필요).
-- **다른 서비스 장애 시 처리:** 오류 매핑·운영 Feign 타임아웃을 정의하고 최종 HTTP 응답을 검증해야 한다. Circuit Breaker·Fallback(선택 요구사항 5번)도 검토한다.
+- **다른 서비스 장애 시 처리:** 매치 서비스는 `503 / EXTERNAL_SERVICE_UNAVAILABLE` 매핑과 운영 Feign 연결 1000ms·응답 3000ms 적용을 완료했다. 팀 공통 규약은 아직 합의 전이며, Circuit Breaker·Fallback(선택 요구사항 5번)도 검토한다.
+- **수정·참가 경합 테스트:** 현재 동시성 테스트는 실제 잠금 경합을 강제하지 않는다. 잠금 획득 후 대기시키는 경합 테스트가 필요하다.
+- **회원 탈퇴 정리의 최신 조회:** `removeMatchesForWithdrawal`은 잠금 전에 읽은 엔티티로 갱신할 수 있다. 연동 전에 잠금 후 최신 조회로 재구성해야 한다.
+- **수정 응답 장애 테스트:** 현재 HTTP 500만 검증한다. 시간 초과·JSON 오류·연결 거부 사례를 추가해야 한다.
 - **Eureka·Config·Gateway 연동:** 공통 설정 담당(이우진)이 준비되면 `url` 대신 서비스 이름으로 찾도록 바꾼다.
 - **Dockerfile:** 인프라 담당과 형식을 맞춘 뒤 추가.
 - **ERD 초안의 포인트·SAGA 컬럼과 새 상태값:** 팀 규칙 확정 후 3단계에서 반영.

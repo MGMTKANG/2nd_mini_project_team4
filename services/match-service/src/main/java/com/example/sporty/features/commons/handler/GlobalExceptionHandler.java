@@ -15,6 +15,8 @@ import com.example.sporty.features.commons.exception.exerciseMatching.MatchCapac
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchFullException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchRecruitmentClosedException;
 import com.example.sporty.features.commons.exception.users.UserNotFoundException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -23,9 +25,12 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
     @ExceptionHandler(ExternalServiceUnavailableException.class)
     public ResponseEntity<ErrorResponse> handleExternalServiceUnavailable(
             ExternalServiceUnavailableException e) {
+        log.warn("외부 서비스 호출 실패: service={}", e.getServiceName(), e);
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(ErrorResponse.builder()
                         .code("EXTERNAL_SERVICE_UNAVAILABLE")
