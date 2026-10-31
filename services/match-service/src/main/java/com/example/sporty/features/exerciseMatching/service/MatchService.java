@@ -1,6 +1,7 @@
 package com.example.sporty.features.exerciseMatching.service;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -54,10 +55,13 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class MatchService {
+    // API의 오프셋 없는 경기 시각은 서울 지역 시각이다. 호스트/JVM 기본 시간대에 의존하지 않는다.
+    private static final ZoneId MATCH_TIME_ZONE = ZoneId.of("Asia/Seoul");
     private final MatchRepository matchRepository;
     private final MatchParticipantRepository matchParticipantRepository;
     private final UserClient userClient;
     private final FacilityClient facilityClient;
+    private final MatchUserGuard userGuard;
 
     // [EM-08] 내 매치 목록 조회
     public List<MyMatchResponseDto> getMyMatches(Long userId) {
@@ -119,7 +123,7 @@ public class MatchService {
         // 같은 트랜잭션의 삭제를 반영한 인원으로 확인하며, 참여 API와 매치 잠금을 공유한다.
         // CLOSED 상태에서 탈퇴했을 때, 매칭 시작 전 + 인원 제한 수 보다 적으면 다시 RECRUITING 상태로 변경
         if (match.getStatus() == MatchStatus.CLOSED
-                && match.getStartAt().isAfter(LocalDateTime.now())
+                && match.getStartAt().isAfter(LocalDateTime.now(MATCH_TIME_ZONE))
                 && matchParticipantRepository.countByMatch_Id(match.getId()) < match.getMaxParticipant()) {
             match.reopenRecruitment();
         }
@@ -152,6 +156,7 @@ public class MatchService {
     // EM-06: 참가자 저장과 정원 도달 시 모집 마감을 하나의 트랜잭션으로 처리한다.
     @Transactional
     public MatchParticipantResponseDto joinMatch(Long matchId, Long userId) {
+        userGuard.requireActive(userId);
         MatchEntity match = matchRepository.findByIdForUpdate(matchId)
                 .orElseThrow(MatchNotFoundException::new);
 
@@ -172,7 +177,7 @@ public class MatchService {
         }
 
         // 잠금을 기다리는 동안 시작 시각이 지났을 수도 있으므로 조회 후 현재 시각을 확인한다.
-        if (!match.getStartAt().isAfter(LocalDateTime.now())) {
+        if (!match.getStartAt().isAfter(LocalDateTime.now(MATCH_TIME_ZONE))) {
             throw new MatchAlreadyStartedException();
         }
 
@@ -219,6 +224,7 @@ public class MatchService {
 
     @Transactional
     public Long createMatch(Long userId, MatchCreateRequestDto req) {
+        userGuard.requireActive(userId);
 
         // 1. 생성 요청 회원 확인
         UserSummary user = userClient.findUser(userId)
@@ -288,7 +294,7 @@ public class MatchService {
         if (capacityChanged) {
             if (participantCount == match.getMaxParticipant()) {
                 match.closeRecruitment();
-            } else if (match.getStartAt().isAfter(LocalDateTime.now())) {
+            } else if (match.getStartAt().isAfter(LocalDateTime.now(MATCH_TIME_ZONE))) {
                 // 참가 탈퇴와 같은 기준으로, 수정 후 시작 시각이 지나지 않은 매치만 모집을 재개한다.
                 match.reopenRecruitment();
             }

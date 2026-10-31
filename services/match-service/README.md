@@ -4,7 +4,7 @@
 1단계는 원본 매치 테스트 101개로 확인한 범위에서 도메인 로직을 유지하며 분리했다. 매치 상태는 기존과 같은 `RECRUITING/CLOSED`이다.
 
 - 담당: 김승진
-- 소유 DB: `match_db` (`match`, `match_participant`, `processed_event`)
+- 소유 DB: `match_db` (`match`, `match_participant`, `processed_event`, `match_user_state`)
 - 포트: 8082
 
 ## 실행
@@ -53,6 +53,8 @@ Feign/Eureka 호출은 로드밸런서 자동 재시도 끔(`spring.cloud.loadba
 운영 DB는 명시적인 스키마 마이그레이션을 먼저 적용한 뒤 `MATCH_JPA_DDL_AUTO=validate`로 실행하는 것을 권장한다. `validate`는 스키마를 생성·변경하지 않으므로 마이그레이션과 DB별 사전 검증이 필요하다. 기본 `update`는 현재 로컬 동작을 유지한다.
 
 Actuator 웹 노출은 `health,info`뿐이며 두 경로는 비로그인 접근을 허용한다. Compose 앱 healthcheck는 미설정이다. K8s에서는 `management.endpoint.health.probes.enabled=true`(환경 변수 `MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED=true`)로 활성화하고, liveness는 `/actuator/health/liveness`, readiness는 `/actuator/health/readiness`를 사용한다. 두 probe 경로도 비로그인 접근을 허용한다.
+
+경기 시작·모집 재개 판정은 `Asia/Seoul`을 명시해 JVM 기본 시간대와 무관하게 비교한다. 프론트/API의 오프셋 없는 `startAt`·`endAt`은 서울 지역 시각이다. Docker도 로그와 기본 시각을 맞추도록 `TZ=Asia/Seoul`로 실행한다. 테스트 fixture는 서울 기준이며 별도 시간대 회귀 테스트가 UTC·미국 서부 JVM에서도 같은 동작을 확인한다.
 
 앱은 graceful shutdown과 종료 단계 제한 `20s`를 사용하며, Compose는 `stop_grace_period: 30s`로 종료를 기다린다.
 
@@ -103,15 +105,29 @@ Compose도 `.env`의 `MATCH_KAFKA_ENABLED`(기본 `false`), `KAFKA_BOOTSTRAP_SER
 
 `UserWithdrawnListener`가 JSON을 검사한 뒤 별도 빈인 `UserWithdrawnHandler.handle`을 호출한다. 다른 `eventType`은 INFO 로그 후 건너뛴다. 잘못된 JSON, 없거나 잘못된 `eventId`/`payload.userId`는 원문을 남기지 않고 ERROR 로그(`topic`/`partition`/`offset`, 확인 가능한 UUID `eventId`) 후 건너뛴다. 이 메시지들은 재시도하지 않고 다음 이벤트를 처리한다.
 
-처리 순서는 새 `REQUIRES_NEW / READ_COMMITTED` 트랜잭션 시작 → `(consumer_name, event_id)` 존재 확인 → 없으면 명시적 INSERT → `removeMatchesForWithdrawal(userId)` → DB 커밋이다. 이미 처리된 ID는 매치 정리를 실행하지 않는다. 동시 INSERT의 PK 충돌은 실패한 트랜잭션을 먼저 롤백한 뒤 처리 이력을 다시 조회해, 다른 처리가 커밋한 이력이 있으면 중복으로 정상 반환한다. 그 외 삽입 오류는 재시도 대상으로 전달한다. 처리 이력과 매치 변경은 같은 트랜잭션이므로 정리 실패 시 함께 롤백한다. `processed_event`는 ERD의 `consumer_name VARCHAR(100)`, `event_id CHAR(36)`, `processed_at DATETIME`, 복합 PK를 매핑한다.
+처리 순서는 새 `REQUIRES_NEW / READ_COMMITTED` 트랜잭션 시작 → `(consumer_name, event_id)` 존재 확인 → 없으면 명시적 INSERT → 사용자 행 잠금 및 탈퇴 상태 기록 → `removeMatchesForWithdrawal(userId)` → DB 커밋이다. 이미 처리된 ID는 매치 정리를 실행하지 않는다. 동시 INSERT의 PK 충돌은 실패한 트랜잭션을 먼저 롤백한 뒤 처리 이력을 다시 조회해, 다른 처리가 커밋한 이력이 있으면 중복으로 정상 반환한다. 그 외 삽입 오류는 재시도 대상으로 전달한다. 처리 이력·사용자 탈퇴 상태·매치 변경은 같은 트랜잭션이므로 정리 실패 시 함께 롤백한다. `processed_event`는 ERD의 `consumer_name VARCHAR(100)`, `event_id CHAR(36)`, `processed_at DATETIME`, 복합 PK를 매핑한다.
 
 리스너에는 Kafka 트랜잭션을 사용하지 않는다. 컨슈머의 자동 커밋을 끄고 `ack-mode=record`를 사용해, 처리 서비스의 DB 트랜잭션이 끝나고 리스너가 정상 반환한 뒤 컨테이너가 오프셋을 확정한다. DB 커밋 후 오프셋 확정 전 중단돼 재전달되면 처리 이력으로 건너뛴다. DB·연결 등 일시 오류는 `DefaultErrorHandler`와 `ExponentialBackOff`로 무제한 재시도한다. 초기 1초, 배수 2, 최대 간격 30초이며 최대 경과 시간은 `Long.MAX_VALUE`로 설정한다. 실패마다 WARN 로그에 `topic`/`partition`/`offset`/확인 가능한 `eventId`와 `attempt`(최초 실패 1)를 남긴다. **같은 파티션의 뒤 메시지는 앞 메시지가 처리될 때까지 대기한다.** 장애 원인을 복구하면 같은 레코드 처리를 재시도하며, 프로세스를 재시작해도 마지막 확정 오프셋부터 이어간다.
 
-`JsonProcessingException`, `IllegalArgumentException`, `NullPointerException`, `ClassCastException`은 `addNotRetryableExceptions`로 즉시 건너뛴다. Spring Kafka의 기본 재시도 불가 분류도 유지한다. 형식 오류·명백한 프로그래밍 오류를 건너뛸 때는 ERROR 로그에 토픽·파티션·오프셋·확인 가능한 이벤트 ID를 남긴다. 프로그래밍 오류는 코드 수정 후 해당 오프셋의 수동 재처리가 필요하다. 토픽·DLT 생성과 별도 실패 보관은 Kafka 담당 영역이다.
+검증된 이벤트 처리 중의 모든 예외는 재시도한다. `setClassifications(Map.of(), true)`로 Spring Kafka의 기본 fatal 분류도 제거하므로 `NullPointerException`, `ClassCastException`, 처리 단계의 `IllegalArgumentException`도 소비 위치를 넘기지 않는다. 형식 오류 제외는 리스너의 파싱 구간에 한정된다. 복구 콜백도 로그만 남기고 성공 반환하지 않고 예외를 던지므로, DLT/실패 보관이 준비되기 전에 이벤트를 유실하지 않는다. 영구적인 코드 오류는 수정·재배포가 필요하며 그동안 같은 파티션의 뒤 메시지는 대기한다. 토픽·DLT와 운영 경보는 Kafka 담당자와 협의한다.
 
 백오프 간격은 `match.kafka.retry.initial-interval-ms`(기본 `1000`), `match.kafka.retry.max-interval-ms`(기본 `30000`)로 주입한다(`0 < 초기 <= 최대`). `UserWithdrawnKafkaIntegrationTest`의 `@SpringBootTest(properties=...)`에서만 `10`/`50`ms로 줄여 5회 실패 후 성공을 빠르게 검증하며, 배수·무제한 경과 시간·운영 `earliest` 설정은 유지한다.
 
 운영에서 `removeMatchesForWithdrawal`은 이 처리 경계 밖에서 호출하지 않는다. 새 트랜잭션에는 미리 적재된 `Match`가 없고, 매치 ID만 모은 뒤 오름차순 잠금 조회로 정리한다. MariaDB에서의 스냅샷·잠금·중복 처리는 위 MariaDB 통합 테스트로 확인했다.
+
+## 생성·참가와 회원 탈퇴의 경합 방지
+
+`match_user_state(user_id BIGINT PK, withdrawn BOOLEAN NOT NULL)`를 매치 DB에 둔다. 유저 서비스 DB와 FK를 연결하지 않는다. `user_id`는 재사용하지 않는다는 기존 계약을 따른다.
+
+- 생성·참가는 사용자 행을 먼저 잠근 뒤 로컬 탈퇴 상태와 원격 회원 상태를 확인한다. 참가의 잠금 순서는 **사용자 행 → 매치 행**이다.
+- 탈퇴 처리도 사용자 행을 먼저 잠그고 `withdrawn=true`로 바꾼 뒤 매치 ID를 수집하고 오름차순으로 잠가 정리한다.
+- 생성·참가가 먼저 잠갔다면 탈퇴 처리는 해당 쓰기의 커밋까지 기다린 뒤 그 기록까지 정리한다. 탈퇴가 먼저 잠갔다면 이후 생성·참가는 `401 / USER_WITHDRAWN`으로 거절한다. 원격 서비스가 오래된 ACTIVE 응답을 주더라도 로컬 기록이 우선한다.
+- 최초 요청끼리 경합하는 경우도 MariaDB의 `INSERT ... ON DUPLICATE KEY UPDATE user_id=user_id`로 처리한다. 기존 `withdrawn=true`를 false로 되돌리지 않는다. 별도 트랜잭션/추가 커넥션을 열지 않는다.
+- 로컬 탈퇴 기록이 있는 회원의 참가 요청은 매치 존재 여부보다 먼저 거절된다. 잠금은 요청 트랜잭션 종료까지 유지하므로 같은 사용자의 동시 요청은 직렬화된다. 단순한 두 번째 원격 조회로 대체하면 경합이 다시 생긴다.
+
+운영 `validate` 모드는 배포 전에 [테이블 생성 SQL](docs/sql/2026-11-01-match-user-state.sql)을 적용해야 한다. 로컬 `update`는 테이블을 생성한다. 최신 ERD·테이블 명세에도 이 보조 테이블을 반영해야 한다. 모든 매치 인스턴스가 같은 잠금 규칙을 사용해야 하므로 기존 버전의 진행 중 요청을 종료한 뒤 전환한다. 이 변경 전에 이미 정리가 누락된 데이터와 이미 소비 완료된 이벤트는 자동으로 복구하지 않으며 별도 대조·정리가 필요하다.
+
+H2 테스트는 테스트 전용 `schema.sql`로 MariaDB 호환 모드를 사용한다. SQL 초기화 기본값 `embedded`이므로 실제 MariaDB에서는 이 스크립트가 실행되지 않는다. 최종 경합 검증은 `MatchUserGuardMariaDBIntegrationTest`에서 실제 MariaDB 행 잠금과 커밋 결과로 확인한다.
 
 ## 원본에서 바꾼 것
 
@@ -142,7 +158,7 @@ Compose도 `.env`의 `MATCH_KAFKA_ENABLED`(기본 `false`), `KAFKA_BOOTSTRAP_SER
 
 ## 검증
 
-**최종 실행(2026-10-31, Docker MariaDB 11.4.8 포함): `gradle cleanTest test` 214개 통과, 실패·건너뜀 0개.**
+**최종 실행(2026-11-01, Docker MariaDB 11.4.8 포함): `gradle cleanTest test --offline --no-daemon` 223개 통과, 실패·오류·건너뜀 0개. 실제 작업 저장소에서 실행했으며 MariaDB 12개, EmbeddedKafka 10개, 기본 시간대 변경 회귀 2개를 포함한다.**
 
 Docker가 없으면 MariaDB 통합 테스트는 실패가 아니라 건너뜀으로 끝난다. 통과 개수만 보지 말고 `build/reports/tests/test/index.html`에서 건너뜀이 0개인지 함께 확인한다.
 
@@ -155,8 +171,9 @@ Docker가 없으면 MariaDB 통합 테스트는 실패가 아니라 건너뜀으
 | Feign HTTP 계약 | `FeignUserClientHttpTest`, `FeignFacilityClientHttpTest` | 실제 Feign과 JDK 내장 HTTP 스텁으로 경로, 반복 ID 쿼리, 한글·선택 파라미터, JSON 매핑, 404/500, 시간 초과, 빈 입력 시 요청 생략 확인. 연결 1초/응답 1500ms는 테스트 전용 값 |
 | 원격 장애 | `MatchRemoteFailureHttpIntegrationTest`, `MatchModifyConnectionFailureHttpIntegrationTest` | 5xx·연결 실패·시간 초과·JSON 오류 시 503, 생성·참가는 저장 안 함, 실패 후 잠금 해제, 수정은 커밋하고 시설·프로필 필드만 null. 원인 예외까지 단언 |
 | 설정 | `MatchServiceApplicationTests`, `CloudProfileConfigurationTest`, `FeignTimeoutConfigurationTest`, `FeignDiscoveryClientHttpTest` | 전체 컨텍스트 기동, Eureka·Config·Kafka 기본 꺼짐, health/info·probe 공개와 다른 Actuator 경로 비노출, 프로필별 설정, 운영 Feign 타임아웃, Eureka 없이 서비스 이름 기반 Feign 호출 |
-| Kafka 탈퇴 수신 | `UserWithdrawnKafkaIntegrationTest`, `UserWithdrawnKafkaStartupIntegrationTest` (EmbeddedKafka) | 정상 정리, 같은 ID 중복, 잘못된 메시지 건너뜀, 동시 PK 충돌, 일시 장애 동안 같은 파티션 대기와 복구 후 처리, 프로그래밍 오류 즉시 건너뜀, 실제 그룹 오프셋 확정, 리스너가 꺼져 있던 동안 발행된 이벤트를 `earliest`로 처리 |
-| 실제 MariaDB | `MatchMariaDBIntegrationTest` (Testcontainers) | 위 [MariaDB 통합 테스트](#mariadb-통합-테스트) 참고 |
+| Kafka 탈퇴 수신 | `UserWithdrawnKafkaIntegrationTest`, `UserWithdrawnKafkaStartupIntegrationTest` (EmbeddedKafka) | 정상 정리, 같은 ID 중복, 잘못된 메시지 건너뜀, 동시 PK 충돌, 일시 장애 동안 같은 파티션 대기와 복구 후 처리, 프로그래밍 오류 동안 오프셋 보존 및 복구 후 정상 처리, 실제 그룹 오프셋 확정, 리스너가 꺼져 있던 동안 발행된 이벤트를 `earliest`로 처리 |
+| 실제 MariaDB | `MatchMariaDBIntegrationTest`, `MatchUserGuardMariaDBIntegrationTest` (Testcontainers) | 격리 수준·매치 잠금·이벤트 중복·스키마 검증, 생성/참가와 탈퇴가 각각 먼저 처리되는 4가지 경합, 운영 SQL 적용 후 Hibernate validate 및 재적용 시 탈퇴 상태 보존 |
+| 시간대 | `MatchTimeZoneTest` | JVM 기본 시간대를 UTC·미국 서부로 바꿔도 서울 시각 기준 시작 후 참가 차단·탈퇴/정원 변경 후 모집 마감 유지 |
 
 테스트가 실제로 문제를 잡는지 일부러 코드를 망가뜨려 확인했다(확인 후 원래대로 되돌림).
 
@@ -224,7 +241,6 @@ Docker 수동 확인(PR #5·#6 시점, Apple Silicon): 이미지 빌드, 비루�
 
 ## 알려진 한계
 
-- 유저 서비스에서 ACTIVE 상태를 확인한 뒤 저장하기 전 짧은 순간에 탈퇴 정리가 끝나면, 진행 중이던 생성·참가 기록이 정리 대상 ID 수집 이후 저장되어 남을 수 있다. 같은 이벤트를 재전달해도 `processed_event`의 중복 처리로 생략된다. **매치 DB에 탈퇴 사용자 기록을 남기고 생성·참가·탈퇴를 사용자 단위 잠금으로 직렬화하는 해결은 후속 과제**이며 이번에는 구현하지 않았다.
-- 일시 오류의 무제한 재시도 동안 같은 파티션의 후속 메시지도 대기한다. 재시도 불가 오류는 ERROR 로그 후 건너뛰며 별도 DLT·실패 이벤트 보관은 없으므로 Kafka 담당(이우진)과 협의가 필요하다.
-- 재시도하지 않는 예외 분류(`JsonProcessingException`, `IllegalArgumentException`, `NullPointerException`, `ClassCastException`)는 원인 체인까지 보므로, 드물게 일시 오류가 이 예외를 원인으로 가지면 재시도 없이 건너뛸 수 있다.
+- 사용자별 잠금은 원격 회원 조회 중에도 유지된다. 원격 서비스 지연 시 같은 사용자의 생성·참가·탈퇴 처리가 대기하며, DB 잠금 시간 초과 시 요청 실패 또는 Kafka 재시도로 이어질 수 있다.
+- 처리 오류의 무제한 재시도 동안 같은 파티션의 후속 메시지도 대기한다. 영구 오류는 코드 수정·재배포와 운영 경보가 필요하며 DLT·실패 이벤트 보관은 Kafka 담당(이우진)과 협의해야 한다.
 - `processed_event`의 실제 PK 컬럼 순서는 `(event_id, consumer_name)`으로 ERD의 `(consumer_name, event_id)`와 다르다. 조회는 항상 전체 키를 사용하므로 동작 영향은 없다. 이 차이는 제출용 테이블 명세서에 기록해야 한다.

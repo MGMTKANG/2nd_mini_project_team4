@@ -1,6 +1,8 @@
 package com.example.sporty.features.exerciseMatching.event;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import com.example.sporty.features.commons.exception.matches.WithdrawnUserFoundException;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -50,6 +52,7 @@ import com.example.sporty.features.exerciseMatching.domain.enums.MatchStatus;
 import com.example.sporty.features.exerciseMatching.domain.enums.SkillLevel;
 import com.example.sporty.features.exerciseMatching.repository.MatchParticipantRepository;
 import com.example.sporty.features.exerciseMatching.repository.MatchRepository;
+import com.example.sporty.features.exerciseMatching.repository.MatchUserStateRepository;
 import com.example.sporty.features.exerciseMatching.repository.ProcessedEventRepository;
 import com.example.sporty.features.exerciseMatching.service.MatchService;
 import com.example.sporty.support.FacilityFixtures;
@@ -80,6 +83,8 @@ class MatchMariaDBIntegrationTest extends MariaDBIntegrationTestSupport {
     @MockitoSpyBean private MatchParticipantRepository participants;
     @MockitoSpyBean private ProcessedEventRepository processedEvents;
 
+    @Autowired private MatchUserStateRepository userStates;
+
     private TransactionTemplate transactions;
     private Map<Long, Long> users;
     private Long serviceId;
@@ -98,6 +103,7 @@ class MatchMariaDBIntegrationTest extends MariaDBIntegrationTestSupport {
             participants.deleteAllInBatch();
             matches.deleteAllInBatch();
             processedEvents.deleteAllInBatch();
+            userStates.deleteAllInBatch();
         });
     }
 
@@ -252,7 +258,8 @@ class MatchMariaDBIntegrationTest extends MariaDBIntegrationTestSupport {
         listener.onMessage(event(eventId));
         assertThat(matches.existsById(owned)).isFalse();
         LocalDateTime processedAt = processedEvents.findById(id(eventId)).orElseThrow().getProcessedAt();
-        Long addedAfterProcessing = createMatch(U, 3);
+        assertThatThrownBy(() -> createMatch(U, 3)).isInstanceOf(WithdrawnUserFoundException.class);
+        Long addedAfterProcessing = createMatch(OWNER, 3);
 
         listener.onMessage(event(eventId));
 

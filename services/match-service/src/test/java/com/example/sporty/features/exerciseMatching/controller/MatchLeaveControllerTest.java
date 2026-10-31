@@ -45,6 +45,7 @@ import com.example.sporty.features.exerciseMatching.domain.enums.MatchStatus;
 import com.example.sporty.features.exerciseMatching.repository.MatchParticipantRepository;
 import com.example.sporty.features.exerciseMatching.repository.MatchRepository;
 import com.example.sporty.features.exerciseMatching.service.MatchService;
+import com.example.sporty.features.exerciseMatching.service.MatchUserGuard;
 
 
 import io.jsonwebtoken.Jwts;
@@ -55,6 +56,7 @@ import io.jsonwebtoken.security.Keys;
 @Import({MatchService.class, SecurityConfig.class, JwtAuthenticationFilter.class})
 @TestPropertySource(properties = "jwt.secret=test-only-signing-secret-with-at-least-32-bytes")
 class MatchLeaveControllerTest {
+    @MockitoBean private MatchUserGuard userGuard;
 
     private static final String SECRET = "test-only-signing-secret-with-at-least-32-bytes";
     private final JwtProvider jwtProvider = new JwtProvider(SECRET);

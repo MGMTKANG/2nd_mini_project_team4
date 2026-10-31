@@ -28,6 +28,8 @@ import org.apache.kafka.common.serialization.StringSerializer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.stubbing.Answer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -55,6 +57,7 @@ import com.example.sporty.features.exerciseMatching.domain.enums.MatchStatus;
 import com.example.sporty.features.exerciseMatching.domain.enums.SkillLevel;
 import com.example.sporty.features.exerciseMatching.repository.MatchParticipantRepository;
 import com.example.sporty.features.exerciseMatching.repository.MatchRepository;
+import com.example.sporty.features.exerciseMatching.repository.MatchUserStateRepository;
 import com.example.sporty.features.exerciseMatching.repository.ProcessedEventRepository;
 import com.example.sporty.features.exerciseMatching.service.MatchService;
 
@@ -88,6 +91,8 @@ class UserWithdrawnKafkaIntegrationTest {
     @MockitoSpyBean private MatchService matchService;
     @MockitoSpyBean private ProcessedEventRepository processedEvents;
 
+    @Autowired private MatchUserStateRepository userStates;
+
     private TransactionTemplate transactions;
     private DefaultKafkaProducerFactory<String, String> producerFactory;
     private KafkaTemplate<String, String> producer;
@@ -112,6 +117,7 @@ class UserWithdrawnKafkaIntegrationTest {
             participants.deleteAllInBatch();
             matches.deleteAllInBatch();
             processedEvents.deleteAllInBatch();
+            userStates.deleteAllInBatch();
         });
     }
 
@@ -180,7 +186,8 @@ class UserWithdrawnKafkaIntegrationTest {
         Answer<?> repositoryCalls = mockingDetails(processedEvents).getMockCreationSettings().getDefaultAnswer();
         doAnswer(invocation -> {
             if (inserts.incrementAndGet() == 2) {
-                rollbackObserved.set(!processedEvents.existsById(id(eventId)) && matches.existsById(owned));
+                rollbackObserved.set(!processedEvents.existsById(id(eventId)) && matches.existsById(owned)
+                        && userStates.findById(WITHDRAWN_USER).map(state -> !state.isWithdrawn()).orElse(true));
             }
             return repositoryCalls.answer(invocation);
         }).when(processedEvents).insert(eq(UserWithdrawnHandler.CONSUMER_NAME), eq(eventId), any(LocalDateTime.class));
@@ -248,23 +255,49 @@ class UserWithdrawnKafkaIntegrationTest {
         assertThat(processedEvents.count()).isEqualTo(2);
     }
 
-    @Test
-    void programmingErrorIsSkippedWithoutRetryAndFollowingEventIsProcessed() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"NullPointerException", "ClassCastException", "IllegalArgumentException"})
+    void processingErrorsKeepOffsetUntilRecovery(String errorType) throws Exception {
         Long failedUserMatch = createMatch(2L, 3);
         Long nextUserMatch = createMatch(WITHDRAWN_USER, 3);
         String failedEventId = UUID.randomUUID().toString();
+        String nextEventId = UUID.randomUUID().toString();
+        CountDownLatch failures = new CountDownLatch(3);
+        AtomicBoolean recovered = new AtomicBoolean();
         doAnswer(invocation -> {
-            throw new NullPointerException("test: programming error");
+            if (!recovered.get()) {
+                failures.countDown();
+                throw switch (errorType) {
+                    case "ClassCastException" -> new ClassCastException("test: processing error");
+                    case "IllegalArgumentException" -> new IllegalArgumentException("test: processing error");
+                    default -> new NullPointerException("test: processing error");
+                };
+            }
+            return invocation.callRealMethod();
         }).when(matchService).removeMatchesForWithdrawal(2L);
 
-        sendAndAwaitCommit(event(failedEventId, 2L));
-        sendAndAwaitCommit(event(UUID.randomUUID().toString(), WITHDRAWN_USER));
-
-        verify(matchService, times(1)).removeMatchesForWithdrawal(2L);
-        assertThat(matches.existsById(failedUserMatch)).isTrue();
+        RecordMetadata failed = send(event(failedEventId, 2L));
+        RecordMetadata next = send(event(nextEventId, WITHDRAWN_USER));
+        try {
+            assertThat(failures.await(10, TimeUnit.SECONDS)).isTrue();
+            assertThat(matches.existsById(failedUserMatch)).isTrue();
+            assertThat(matches.existsById(nextUserMatch)).isTrue();
+            assertThat(processedEvents.count()).isZero();
+            verify(matchService, never()).removeMatchesForWithdrawal(WITHDRAWN_USER);
+            var offsets = admin.listConsumerGroupOffsets("match-service")
+                    .partitionsToOffsetAndMetadata().get(2, TimeUnit.SECONDS);
+            var committed = offsets.get(new TopicPartition(TOPIC, failed.partition()));
+            if (committed != null) {
+                assertThat(committed.offset()).isLessThanOrEqualTo(failed.offset());
+            }
+        } finally {
+            recovered.set(true);
+            awaitCommit(next);
+        }
+        assertThat(matches.existsById(failedUserMatch)).isFalse();
         assertThat(matches.existsById(nextUserMatch)).isFalse();
-        assertThat(processedEvents.existsById(id(failedEventId))).isFalse();
-        assertThat(processedEvents.count()).isEqualTo(1);
+        assertThat(processedEvents.existsById(id(failedEventId))).isTrue();
+        assertThat(processedEvents.existsById(id(nextEventId))).isTrue();
     }
 
     @Test
