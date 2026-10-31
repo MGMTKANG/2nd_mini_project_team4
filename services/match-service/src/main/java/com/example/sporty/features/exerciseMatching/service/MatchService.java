@@ -111,13 +111,16 @@ public class MatchService {
             throw new MatchOwnerCannotLeaveException();
         }
 
-        matchParticipantRepository.delete(participant);
+        removeParticipantAndReopenRecruitment(match, participant);
+    }
 
+    private void removeParticipantAndReopenRecruitment(MatchEntity match, MatchParticipantEntity participant) {
+        matchParticipantRepository.delete(participant);
         // 같은 트랜잭션의 삭제를 반영한 인원으로 확인하며, 참여 API와 매치 잠금을 공유한다.
         // CLOSED 상태에서 탈퇴했을 때, 매칭 시작 전 + 인원 제한 수 보다 적으면 다시 RECRUITING 상태로 변경
         if (match.getStatus() == MatchStatus.CLOSED
                 && match.getStartAt().isAfter(LocalDateTime.now())
-                && matchParticipantRepository.countByMatch_Id(matchId) < match.getMaxParticipant()) {
+                && matchParticipantRepository.countByMatch_Id(match.getId()) < match.getMaxParticipant()) {
             match.reopenRecruitment();
         }
     }
@@ -126,19 +129,19 @@ public class MatchService {
     @Transactional
     public void removeMatchesForWithdrawal(Long userId) {
         List<Long> matchIds = matchParticipantRepository
-                .findAllByUserIdOrderByMatch_StartAtDescMatch_IdDesc(userId).stream()
-                .map(participant -> participant.getMatch().getId())
-                .distinct().sorted().toList();
+                .findMatchIdsByUserIdOrderByMatchIdAsc(userId);
 
-        // 참가/탈퇴 API와 같은 매치 잠금을 사용하고, 여러 매치는 ID 순으로 잠근다.
+        // ID만 수집한 뒤 오름차순으로 잠그고, 잠금 후 처음 읽은 엔티티로만 판단·변경한다.
         for (Long matchId : matchIds) {
-            if (matchRepository.findByIdForUpdate(matchId).isEmpty()) continue;
+            MatchEntity match = matchRepository.findByIdForUpdate(matchId).orElse(null);
+            if (match == null) continue;
             var participation = matchParticipantRepository.findByMatch_IdAndUserId(matchId, userId);
             if (participation.isEmpty()) continue;
             if (participation.get().getRole() == MatchParticipantRole.OWNER) {
-                deleteMatch(matchId, userId);
+                matchParticipantRepository.deleteAllByMatch_Id(matchId);
+                matchRepository.delete(match);
             } else {
-                leaveMatch(matchId, userId);
+                removeParticipantAndReopenRecruitment(match, participation.get());
             }
         }
     }

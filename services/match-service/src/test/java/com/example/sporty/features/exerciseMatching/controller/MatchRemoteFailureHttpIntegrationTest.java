@@ -12,6 +12,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import java.net.SocketTimeoutException;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -261,13 +262,41 @@ class MatchRemoteFailureHttpIntegrationTest {
     @CsvSource({"500,200", "200,500", "500,500"})
     void modifyRemoteServerErrorsCommitAndClearDecorations(int profileStatus, int facilityStatus)
             throws Exception {
-        Long matchId = createMatch();
-        join(matchId).andExpect(status().isCreated());
+        Long matchId = createJoinedMatchForModification();
         USER_SERVICE.stub("/internal/users/profiles", profileStatus, profileStatus == 200 ? PROFILES_JSON : "{}");
         FACILITY_SERVICE.stub("/internal/facility-services", facilityStatus,
                 facilityStatus == 200 ? FACILITY_JSON : "{}");
-        MatchModifyRequestDto request = modification();
 
+        assertModificationCommittedWithoutDecorations(matchId, modification());
+        assertThat(USER_SERVICE.requests()).extracting(LocalHttpStub.Request::path)
+                .containsExactly("/internal/users/profiles");
+        if (profileStatus == 200) {
+            assertFacilityLookupRequested();
+        } else {
+            assertThat(FACILITY_SERVICE.requests()).isEmpty();
+        }
+    }
+
+    @Test
+    void modifyFacilityReadTimeoutCommitsAndClearsDecorations() throws Exception {
+        Long matchId = createJoinedMatchForModification();
+        FACILITY_SERVICE.stub("/internal/facility-services", 200, FACILITY_JSON, Duration.ofSeconds(3));
+
+        assertModificationCommittedWithoutDecorations(matchId, modification());
+        assertFacilityLookupRequested();
+    }
+
+    @Test
+    void modifyMalformedFacilityJsonCommitsAndClearsDecorations() throws Exception {
+        Long matchId = createJoinedMatchForModification();
+        FACILITY_SERVICE.stub("/internal/facility-services", 200, "[broken");
+
+        assertModificationCommittedWithoutDecorations(matchId, modification());
+        assertFacilityLookupRequested();
+    }
+
+    private void assertModificationCommittedWithoutDecorations(Long matchId, MatchModifyRequestDto request)
+            throws Exception {
         modify(matchId, request).andExpect(status().isOk())
                 .andExpect(jsonPath("$.title").value(request.getTitle()))
                 .andExpect(jsonPath("$.serviceId").value(1))
@@ -298,6 +327,26 @@ class MatchRemoteFailureHttpIntegrationTest {
         assertThat(stored.getSkillLevel()).isEqualTo(SkillLevel.ADVANCED);
         assertThat(stored.getGenderGroup()).isEqualTo(GenderGroup.FEMALE);
         assertThat(participantRepository.countByMatch_Id(matchId)).isEqualTo(2);
+    }
+
+    private Long createJoinedMatchForModification() throws Exception {
+        Long matchId = createMatch();
+        join(matchId).andExpect(status().isCreated());
+        // 생성·참가 요청을 지워 수정 응답 조합의 실제 호출만 확인한다.
+        USER_SERVICE.reset();
+        FACILITY_SERVICE.reset();
+        USER_SERVICE.stub("/internal/users/profiles", 200, PROFILES_JSON);
+        return matchId;
+    }
+
+    private void assertFacilityLookupRequested() {
+        assertThat(USER_SERVICE.requests()).extracting(LocalHttpStub.Request::path)
+                .containsExactly("/internal/users/profiles");
+        assertThat(FACILITY_SERVICE.requests()).hasSize(1);
+        LocalHttpStub.Request request = FACILITY_SERVICE.requests().get(0);
+        assertThat(request.method()).isEqualTo("GET");
+        assertThat(request.path()).isEqualTo("/internal/facility-services");
+        assertThat(request.query()).containsEntry("ids", List.of("1"));
     }
 
     @Test
