@@ -17,7 +17,7 @@ MATCH_DB_USERNAME=... MATCH_DB_PASSWORD=... ./gradlew bootRun
 
 - Docker(매치 단독 로컬용): 위의 `cd services/match-service` 실행 후 `cp .env.example .env`로 가짜 비밀값을 복사하고 필요시 수정한다(`.env`는 Git·이미지 빌드에서 제외).
 - 기동: `docker compose -f compose.match-local.yml up -d --build` (MariaDB 헬스체크 통과 후 매치 시작, 매치 컨테이너 메모리 512MiB 제한).
-- 확인: `docker compose -f compose.match-local.yml ps`, `curl -i http://localhost:8082/api/matches` → 초기 빈 DB는 비로그인 `200`·`[]` 예상(Actuator 없음). HTTP 확인은 앱 기동 완료 후 실행한다.
+- 확인: `docker compose -f compose.match-local.yml ps`, `curl -i http://localhost:8082/actuator/health` → 비로그인 `200`·`{"status":"UP"}` 예상. `curl -i http://localhost:8082/api/matches` → 초기 빈 DB는 비로그인 `200`·`[]` 예상. HTTP 확인은 앱 기동 완료 후 실행한다.
 - 유저·체육시설 URL은 기본값(`http://localhost:8081`, `http://localhost:8083`)이며 연결되지 않는다. `curl -i 'http://localhost:8082/api/matches?isFree=true'` 같은 원격 호출은 `503 / EXTERNAL_SERVICE_UNAVAILABLE`이 정상이며, 기존 매치가 있으면 기본 목록도 시설 조회로 `503`이 될 수 있다.
 - 정리: `docker compose -f compose.match-local.yml down -v` (로컬 DB 볼륨도 삭제).
 
@@ -26,10 +26,30 @@ MATCH_DB_USERNAME=... MATCH_DB_PASSWORD=... ./gradlew bootRun
 | `MATCH_DB_URL` | `jdbc:mariadb://localhost:3306/match_db` | 매치 전용 DB |
 | `MATCH_DB_USERNAME` / `MATCH_DB_PASSWORD` | `match` / 빈 값 | |
 | `JWT_SECRET_KEY` | 없음(필수) | 유저 서비스와 같은 값 |
-| `USER_SERVICE_URL` | `http://localhost:8081` | Eureka 연동 전 임시 주소 |
-| `FACILITY_SERVICE_URL` | `http://localhost:8083` | Eureka 연동 전 임시 주소 |
+| `USER_SERVICE_URL` | `http://localhost:8081` | 직접 호출 주소. 명시적 빈 값이면 `user-service` 이름으로 탐색 |
+| `FACILITY_SERVICE_URL` | `http://localhost:8083` | 직접 호출 주소. 명시적 빈 값이면 `facility-service` 이름으로 탐색 |
+| `EUREKA_ENABLED` | `false` | Eureka 등록·탐색 활성화 여부 |
+| `EUREKA_URL` | `http://localhost:8761/eureka/` | Eureka 서버 주소 |
+| `CONFIG_ENABLED` | `false` | Config 클라이언트 활성화 여부 |
+| `CONFIG_SERVER_URL` | `http://localhost:8888` | Config 서버 주소(`optional:configserver:`로 가져옴) |
+| `MATCH_JPA_DDL_AUTO` | `update` | Hibernate 스키마 처리. 운영 권장값은 `validate` |
+| `SPRING_PROFILES_ACTIVE` | 미지정 시 `local` | `local` / `dev` / `prod`. Compose 기본값도 `local` |
 
-테스트: `./gradlew test` (H2 사용, 다른 서비스 없이 실행됨)
+기본값은 Eureka·Config 없이 단독 실행한다. 기존 `.env` import는 유지한다. `SPRING_PROFILES_ACTIVE=dev` 또는 `prod`에서는 `show-sql=false`이며, 프로필만 바꿔도 Eureka·Config가 켜지지 않는다. Config 서버가 준비되면 `CONFIG_ENABLED=true CONFIG_SERVER_URL=http://<설정서버>:8888`로 활성화하고 재시작한다. 설정 조회의 서비스 이름은 `match-service`이다.
+
+Eureka 전환 방법:
+
+1. 서버와 상대 서비스 등록이 준비되면 `EUREKA_ENABLED=true EUREKA_URL=http://<유레카서버>:8761/eureka/`로 설정한다.
+2. `USER_SERVICE_URL='' FACILITY_SERVICE_URL=''`로 명시적으로 비우면 `@FeignClient`의 `name`(`user-service`, `facility-service`)을 Spring Cloud LoadBalancer가 찾아 호출한다. 변수를 생략하면 기존 직접 주소를 사용한다.
+3. 앱을 재시작하고 `match-service` 등록과 상대 서비스 호출을 확인한다. Compose도 `.env`의 같은 변수를 전달하며, 주소는 컨테이너에서 접근 가능한 값으로 설정한다.
+
+운영 DB는 명시적인 스키마 마이그레이션을 먼저 적용한 뒤 `MATCH_JPA_DDL_AUTO=validate`로 실행하는 것을 권장한다. `validate`는 스키마를 생성·변경하지 않으므로 마이그레이션과 DB별 사전 검증이 필요하다. 기본 `update`는 현재 로컬 동작을 유지한다.
+
+Actuator 웹 노출은 `health,info`뿐이며 두 경로는 비로그인 접근을 허용한다. Compose 앱 healthcheck는 미설정이다. K8s에서는 `management.endpoint.health.probes.enabled=true`(환경 변수 `MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED=true`)로 활성화하고, liveness는 `/actuator/health/liveness`, readiness는 `/actuator/health/readiness`를 사용한다. 두 probe 경로도 비로그인 접근을 허용한다.
+
+앱은 graceful shutdown과 종료 단계 제한 `20s`를 사용하며, Compose는 `stop_grace_period: 30s`로 종료를 기다린다.
+
+테스트: `./gradlew test` (H2 사용, 다른 서비스 없이 실행됨. 새 의존성을 최초로 받으려면 네트워크가 가능한 빌드 환경 필요)
 
 ## 원본에서 바꾼 것
 
@@ -61,16 +81,20 @@ MATCH_DB_USERNAME=... MATCH_DB_PASSWORD=... ./gradlew bootRun
 ## 검증
 
 - 원본 매치 테스트 11개 파일(101개)을 옮겨 모두 통과. 회원·시설 데이터는 메모리 가짜 클라이언트로 대체했다.
-- 전체 설정(Feign 클라이언트 포함)이 뜨는지 확인하는 부팅 테스트 1개 추가.
+- 전체 설정(Feign 클라이언트 포함)이 뜨는지 확인하는 `MatchServiceApplicationTests`를 유지하고 기본 Eureka·Config 비활성값, 비로그인 health/info·probe 접근, 다른 Actuator 경로의 비노출 검증을 추가했다.
+- `FeignDiscoveryClientHttpTest` 추가: Eureka 없이 `SimpleDiscoveryClient`에 두 스텁 주소를 등록하고 두 URL을 빈 값으로 설정한다. 실제 `FeignUserClient`·`FeignFacilityClient`, LoadBalancer 클라이언트와 HTTP 요청 기록을 확인한다.
+- `CloudProfileConfigurationTest` 추가: `local/dev/prod`의 SQL 출력·클라우드 기본 비활성값과 `MATCH_JPA_DDL_AUTO=validate` 적용을 검증한다.
 - 팀 공통 규약 초안(2026-10-31, 합의 전) 기준 HTTP 계약 검증: `FeignUserClientHttpTest`, `FeignFacilityClientHttpTest`에서 실제 Feign 구현과 JDK 내장 HTTP 스텁을 사용한다.
 - 경로·반복 ID 쿼리·한글/선택 파라미터·JSON 매핑·404/500·응답 시간 초과·빈 입력의 요청 생략을 검증한다. 연결 1초/응답 1500ms는 테스트 전용 설정이다.
-- 실행: `gradle cleanTest test --offline` (H2와 `127.0.0.1` 임의 포트 사용, 외부 서비스·추가 라이브러리 불필요).
+- 캐시에 의존성이 준비된 환경에서 실행: `gradle cleanTest test --offline` (H2와 `127.0.0.1` 임의 포트 사용, 외부 서비스 불필요).
 - 옮기지 않은 테스트: `MatchIntegrationTest`(원본도 MariaDB 연결이 필요해 기본 실행에서 제외되던 테스트).
 - 실제 유저·체육시설 서비스와 연결한 동작은 아직 확인하지 않았다(상대 API가 아직 없음).
 - 정원·잠금 회귀 테스트 추가: `MatchCapacityControllerTest`(최소 정원 입력·전용 오류 응답), `MatchModifyIntegrationTest`(거절 후 DB 보존·마감/재개·참가와 축소 동시 요청). 동시성 검증 대상 DB는 H2이며 MariaDB 검증은 별도로 필요하다.
 - Codex 샌드박스 실행 이력(2026-10-31): Gradle이 `~/.gradle/native/.../libnative-platform.dylib.lock` 쓰기 권한 오류로 빌드 시작 전에 중단돼 컴파일·테스트는 미실행이었다. 캐시·권한 우회 없이 종료했다.
 - 후속 과제 구현 당시 Codex 샌드박스 실행 이력(2026-10-31): 강제 잠금 경합 3개, 회원탈퇴 정리 3개, 수정 응답의 시설 시간 초과·JSON 오류·연결 거부 3개 테스트를 추가하고 기존 프로필 정상/시설 500 사례의 실제 시설 요청 기록을 확인하도록 보강했다. 당시 `gradle test --offline`은 Gradle 네이티브 서비스의 `libnative-platform.dylib` 로딩 실패로 빌드 시작 전에 중단되어 **컴파일·테스트 미실행**이며, 권한·캐시 우회는 하지 않았다.
-- 최신 실행 기록(Claude 실행 보고): 2026-10-31 20:1x KST, Claude가 샌드박스 밖에서 `gradle cleanTest test` 181개 통과 및 잠금 경합·탈퇴 테스트 10회 반복 통과를 확인했다. `modifyMatch`의 잠금 조회를 일반 조회로 바꾸면 경합 테스트가 실패하는 변이 확인 후 원복했다. 이는 이번 예외 원인 단언 보강 전의 실행 기록이며, Codex가 원본 실행 로그를 재검증한 결과는 아니다.
+- Cloud 클라이언트 변경 전 실행 기록(Claude 실행 보고): 2026-10-31 20:1x KST, Claude가 샌드박스 밖에서 `gradle cleanTest test` 181개 통과 및 잠금 경합·탈퇴 테스트 10회 반복 통과를 확인했다. `modifyMatch`의 잠금 조회를 일반 조회로 바꾸면 경합 테스트가 실패하는 변이 확인 후 원복했다. 이는 예외 원인 단언 보강 전의 실행 기록이며, Codex가 원본 실행 로그를 재검증한 결과는 아니다.
+- Cloud 클라이언트 변경 후 Codex 실행(2026-10-31): `gradle cleanTest test --offline --no-daemon`은 Gradle 네이티브 서비스의 `libnative-platform.dylib` 로딩 실패로 빌드 시작 전에 중단됐다. **기존·추가 테스트 모두 컴파일·실행 미확인**이다. 우회·네트워크 사용은 하지 않았으며, 네트워크 가능한 환경에서 새 의존성을 받은 뒤 전체 테스트를 실행해야 한다. 실제 Eureka 등록·Config 수신·컨테이너 종료 유예도 미검증이다.
+- 같은 변경의 정적 확인: application.yml 3개 문서와 Compose YAML 파싱, `docker compose --env-file /dev/null -f compose.match-local.yml config --format json`의 기본값·전환값(두 Feign URL 빈 값, Cloud 활성화, prod/validate) 검증, `git diff --check`가 통과했다. Compose 검증은 가짜 비밀값으로 설정만 렌더링했으며 컨테이너 실행·네트워크 사용은 없었다.
 
 ## 임의로 정한 것 (팀 확인 필요)
 
@@ -107,7 +131,7 @@ MATCH_DB_USERNAME=... MATCH_DB_PASSWORD=... ./gradlew bootRun
 - **수정·참가·삭제 경합 테스트 — 완료:** `MatchLockContentionIntegrationTest`에서 A의 실제 행 잠금 획득 후 B의 조회 반환·서비스 완료가 400ms 동안 대기하고, A 커밋 후 일관된 결과가 저장되는지 단언한다(테스트 H2 `LOCK_TIMEOUT=10000`).
 - **회원 탈퇴 정리의 최신 조회 — 완료(현재 H2 테스트 범위):** 엔티티 대신 매치 ID만 오름차순으로 조회한 뒤 잠금 후 읽은 매치·참가 정보로 정리하며, OWNER 삭제·본인만 참가 취소·마감 재개·시작 후 마감 유지와 ID 조회 사이에 커밋된 정원 수정 보존 테스트를 추가했다. 아래 탈퇴 연동 전 해결 항목은 남아 있다.
 - **수정 응답 장애 테스트 — 완료:** 실제 Feign의 시설 시간 초과·JSON 오류·연결 거부에서도 수정 200·DB 반영·시설 필드 null을 단언하고, 프로필 정상/시설 500은 시설 요청 기록까지 확인한다. 이번 보강으로 시간 초과·JSON 오류의 실제 예외 원인도 단언하며, 보강분 실행 검증은 별도로 필요하다.
-- **Eureka·Config·Gateway 연동:** 공통 설정 담당(이우진)이 준비되면 `url` 대신 서비스 이름으로 찾도록 바꾼다.
+- **Eureka·Config 실제 연동 및 Gateway:** 클라이언트 연결 준비는 추가했으며 기본값은 비활성이다. 공통 설정 담당(이우진)의 서버가 준비되면 위 환경 변수로 활성화하고 실제 등록·설정 수신을 검증한다. Gateway 연동은 별도 후속 작업이다.
 - **전체 Compose 연동:** 매치 Dockerfile·매치 단독 로컬 Compose는 추가했다. 전체 서비스 Compose 통합은 인프라 담당과 진행한다.
 - **ERD 초안의 포인트·SAGA 컬럼과 새 상태값:** 팀 규칙 확정 후 3단계에서 반영.
 

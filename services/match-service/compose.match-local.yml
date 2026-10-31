@@ -31,11 +31,20 @@ services:
       MATCH_DB_USERNAME: ${MATCH_DB_USERNAME:-match}
       MATCH_DB_PASSWORD: ${MATCH_DB_PASSWORD:?Create .env from .env.example and set MATCH_DB_PASSWORD}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Create .env from .env.example and set JWT_SECRET_KEY}
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
+      EUREKA_ENABLED: ${EUREKA_ENABLED:-false}
+      EUREKA_URL: ${EUREKA_URL:-http://localhost:8761/eureka/}
+      CONFIG_ENABLED: ${CONFIG_ENABLED:-false}
+      CONFIG_SERVER_URL: ${CONFIG_SERVER_URL:-http://localhost:8888}
+      MATCH_JPA_DDL_AUTO: ${MATCH_JPA_DDL_AUTO:-update}
+      # 콜론 없는 기본값 문법으로 이름 기반 호출에 필요한 명시적 빈 값을 보존한다.
+      USER_SERVICE_URL: ${USER_SERVICE_URL-http://localhost:8081}
+      FACILITY_SERVICE_URL: ${FACILITY_SERVICE_URL-http://localhost:8083}
       JAVA_OPTS: ${JAVA_OPTS:-}
-    # USER_SERVICE_URL / FACILITY_SERVICE_URL은 application.yml의 localhost 기본값을 사용한다.
     ports:
       - "127.0.0.1:8082:8082"
     mem_limit: 512m
+    stop_grace_period: 30s
 
 volumes:
   match-db-data:
