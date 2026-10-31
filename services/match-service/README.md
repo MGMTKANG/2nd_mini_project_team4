@@ -76,11 +76,13 @@ Gradle 의존성과 MariaDB·Testcontainers 보조 이미지가 모두 준비된
 - 멱등 처리: 같은 ID의 순차 중복은 처리 시각·후속 매치를 보존한다. 동시 두 호출이 모두 미처리를 조회하도록 동기화한 뒤 실제 PK 충돌(오류 1062 / SQLState 23000), 실패 측 롤백 후 정상 반환, 이력 1행·정리 1회를 확인한다. 실제 리스너→처리기를 직접 호출하며 Kafka 전송·오프셋은 기존 EmbeddedKafka 테스트 범위다.
 - 스키마: 예약어 테이블 `match`의 조회·InnoDB, `(match_id, user_id)` UNIQUE와 `processed_event` 복합 PK의 메타데이터 및 실제 중복 거절을 확인한다. 현재 엔티티가 만드는 스키마의 검증이며 최신 ERD의 미확정 Saga 스키마 전체를 검증하는 것은 아니다.
 - b의 `defaultRepeatableReadReproducesClosedStatusAfterWithdrawal`은 같은 시나리오를 격리 지정 없는 새 트랜잭션에서 `removeMatchesForWithdrawal` 직접 호출로 실행한다. 기본 REPEATABLE READ 연결·최종 2명/정원 3/CLOSED 오류를 단언하며 집계 결과는 스텁하지 않는다. **2026-10-31 실제 MariaDB에서 재현 확인(Claude 실행). 오류 재현 테스트를 유지한다.**
-- **검증 상태(Claude 실행, 2026-10-31): Docker MariaDB 11.4.8에서 전체 211개 중 210개 통과, MariaDB 7개 중 6개 통과.** READ_COMMITTED 정상 동작·기본 REPEATABLE READ 오류 재현·잠금 경합·순차/동시 중복 처리·예약어 테이블/UNIQUE 검증은 통과했다. 유일한 실패는 `processed_event` PK 컬럼 순서가 기대와 반대인 것으로, 순서 무관 단언으로 수정했다. Codex는 기존 테스트 XML의 집계와 실패 원인을 확인했으며, **수정 후 컴파일·테스트는 재실행하지 않았다.** Docker 없는 환경의 자동 건너뜀도 이번 실행으로 확인한 것은 아니다.
+- **수정 전 검증(Claude 실행 보고, 2026-10-31): Docker MariaDB 11.4.8에서 전체 211개 통과·skipped 0, MariaDB+Kafka 테스트 3회 반복 통과.** PK 컬럼 순서 단언 수정 후 결과이며, READ_COMMITTED 제거 변이는 실제 격리 수준 단언에서 실패하는 것을 확인했다. Codex가 이번 작업에서 재실행한 결과는 아니다. **이번 Kafka 수신 보완 후 결과: 2026-10-31 Claude 실행 보고(샌드박스 밖, Docker MariaDB 11.4.8): `gradle cleanTest test` 213개 통과·skipped 0, `UserWithdrawnKafkaIntegrationTest`·`UserWithdrawnKafkaStartupIntegrationTest`·`MatchMariaDBIntegrationTest` 3회 반복 통과.** Docker 없는 환경의 자동 건너뜀은 미확인이다.
 
 ## 회원 탈퇴 이벤트 수신
 
 기본값 `MATCH_KAFKA_ENABLED=false`에서는 리스너 컨테이너가 시작되지 않는다. Kafka Admin의 토픽 자동 생성과 컨슈머의 토픽 자동 생성 요청도 끄므로 Kafka 없이 앱을 기동할 수 있다. Kafka와 유저 서비스가 준비되면 `MATCH_KAFKA_ENABLED=true KAFKA_BOOTSTRAP_SERVERS=<브로커>:9092`로 설정하고 재시작한다. 컨슈머 그룹은 `match-service`, 처리 주체는 `match-service.user-withdrawn`이다. 발행 코드와 토픽 생성 코드는 포함하지 않는다.
+
+Compose도 `.env`의 `MATCH_KAFKA_ENABLED`(기본 `false`), `KAFKA_BOOTSTRAP_SERVERS`, `USER_WITHDRAWN_TOPIC`을 매치 컨테이너에 전달한다. 브로커 주소는 컨테이너에서 접근 가능한 값으로 설정한다. 새 그룹처럼 저장된 오프셋이 없으면 운영 설정 `spring.kafka.consumer.auto-offset-reset=earliest`로 토픽에 남아 있는 가장 오래된 이벤트부터 처리한다. 이미 확정된 오프셋은 그대로 사용하며, 브로커 보존기간이 지나 삭제된 이벤트는 이 설정으로 복구할 수 없다.
 
 유저 서비스 담당자가 준비할 계약(공통 규약 5절 초안 기준):
 
@@ -100,13 +102,17 @@ Gradle 의존성과 MariaDB·Testcontainers 보조 이미지가 모두 준비된
 }
 ```
 
-`UserWithdrawnListener`가 JSON을 검사한 뒤 별도 빈인 `UserWithdrawnHandler.handle`을 호출한다. 다른 `eventType`, 잘못된 JSON, 없거나 잘못된 `eventId`/`payload.userId`는 원문을 남기지 않고 로그 후 건너뛴다. 이 메시지들은 재시도하지 않고 다음 이벤트를 처리한다.
+`UserWithdrawnListener`가 JSON을 검사한 뒤 별도 빈인 `UserWithdrawnHandler.handle`을 호출한다. 다른 `eventType`은 INFO 로그 후 건너뛴다. 잘못된 JSON, 없거나 잘못된 `eventId`/`payload.userId`는 원문을 남기지 않고 ERROR 로그(`topic`/`partition`/`offset`, 확인 가능한 UUID `eventId`) 후 건너뛴다. 이 메시지들은 재시도하지 않고 다음 이벤트를 처리한다.
 
 처리 순서는 새 `REQUIRES_NEW / READ_COMMITTED` 트랜잭션 시작 → `(consumer_name, event_id)` 존재 확인 → 없으면 명시적 INSERT → `removeMatchesForWithdrawal(userId)` → DB 커밋이다. 이미 처리된 ID는 매치 정리를 실행하지 않는다. 동시 INSERT의 PK 충돌은 실패한 트랜잭션을 먼저 롤백한 뒤 처리 이력을 다시 조회해, 다른 처리가 커밋한 이력이 있으면 중복으로 정상 반환한다. 그 외 삽입 오류는 재시도 대상으로 전달한다. 처리 이력과 매치 변경은 같은 트랜잭션이므로 정리 실패 시 함께 롤백한다. `processed_event`는 ERD의 `consumer_name VARCHAR(100)`, `event_id CHAR(36)`, `processed_at DATETIME`, 복합 PK를 매핑한다.
 
-리스너에는 Kafka 트랜잭션을 사용하지 않는다. 컨슈머의 자동 커밋을 끄고 `ack-mode=record`를 사용해, 처리 서비스의 DB 트랜잭션이 끝나고 리스너가 정상 반환한 뒤 컨테이너가 오프셋을 확정한다. DB 커밋 후 오프셋 확정 전 중단돼 재전달되면 처리 이력으로 건너뛴다. DB 오류는 `DefaultErrorHandler`가 200ms 고정 간격으로 2회 재시도(최초 포함 최대 3회)한다. 소진되면 토픽·파티션·오프셋과 오류를 로그로 남기고 해당 레코드를 건너뛰어 다음 레코드를 처리한다. 별도 DLT나 자동 재발행은 없으므로 소진된 이벤트는 로그를 바탕으로 수동 복구해야 한다.
+리스너에는 Kafka 트랜잭션을 사용하지 않는다. 컨슈머의 자동 커밋을 끄고 `ack-mode=record`를 사용해, 처리 서비스의 DB 트랜잭션이 끝나고 리스너가 정상 반환한 뒤 컨테이너가 오프셋을 확정한다. DB 커밋 후 오프셋 확정 전 중단돼 재전달되면 처리 이력으로 건너뛴다. DB·연결 등 일시 오류는 `DefaultErrorHandler`와 `ExponentialBackOff`로 무제한 재시도한다. 초기 1초, 배수 2, 최대 간격 30초이며 최대 경과 시간은 `Long.MAX_VALUE`로 설정한다. 실패마다 WARN 로그에 `topic`/`partition`/`offset`/확인 가능한 `eventId`와 `attempt`(최초 실패 1)를 남긴다. **같은 파티션의 뒤 메시지는 앞 메시지가 처리될 때까지 대기한다.** 장애 원인을 복구하면 같은 레코드 처리를 재시도하며, 프로세스를 재시작해도 마지막 확정 오프셋부터 이어간다.
 
-운영에서 `removeMatchesForWithdrawal`은 이 처리 경계 밖에서 호출하지 않는다. 새 트랜잭션에는 미리 적재된 `Match`가 없고, 매치 ID만 모은 뒤 오름차순 잠금 조회로 정리한다. MariaDB에서의 스냅샷·잠금·중복 처리 검증은 4b의 해당 테스트로 확인했다(Claude 실행, 2026-10-31). 전체 실행 결과와 PK 순서 단언 수정 후 미재실행 상태는 위 검증 상태를 따른다.
+`JsonProcessingException`, `IllegalArgumentException`, `NullPointerException`, `ClassCastException`은 `addNotRetryableExceptions`로 즉시 건너뛴다. Spring Kafka의 기본 재시도 불가 분류도 유지한다. 형식 오류·명백한 프로그래밍 오류를 건너뛸 때는 ERROR 로그에 토픽·파티션·오프셋·확인 가능한 이벤트 ID를 남긴다. 프로그래밍 오류는 코드 수정 후 해당 오프셋의 수동 재처리가 필요하다. 토픽·DLT 생성과 별도 실패 보관은 Kafka 담당 영역이다.
+
+백오프 간격은 `match.kafka.retry.initial-interval-ms`(기본 `1000`), `match.kafka.retry.max-interval-ms`(기본 `30000`)로 주입한다(`0 < 초기 <= 최대`). `UserWithdrawnKafkaIntegrationTest`의 `@SpringBootTest(properties=...)`에서만 `10`/`50`ms로 줄여 5회 실패 후 성공을 빠르게 검증하며, 배수·무제한 경과 시간·운영 `earliest` 설정은 유지한다.
+
+운영에서 `removeMatchesForWithdrawal`은 이 처리 경계 밖에서 호출하지 않는다. 새 트랜잭션에는 미리 적재된 `Match`가 없고, 매치 ID만 모은 뒤 오름차순 잠금 조회로 정리한다. MariaDB에서의 스냅샷·잠금·중복 처리 검증은 4b의 해당 테스트로 확인했다(Claude 실행 보고, 2026-10-31). 수정 전 211개 통과와 이번 수정 후 실행 예정 상태는 위 검증 기록을 따른다.
 
 ## 원본에서 바꾼 것
 
@@ -152,10 +158,12 @@ Gradle 의존성과 MariaDB·Testcontainers 보조 이미지가 모두 준비된
 - Cloud 클라이언트 변경 전 실행 기록(Claude 실행 보고): 2026-10-31 20:1x KST, Claude가 샌드박스 밖에서 `gradle cleanTest test` 181개 통과 및 잠금 경합·탈퇴 테스트 10회 반복 통과를 확인했다. `modifyMatch`의 잠금 조회를 일반 조회로 바꾸면 경합 테스트가 실패하는 변이 확인 후 원복했다. 이는 예외 원인 단언 보강 전의 실행 기록이며, Codex가 원본 실행 로그를 재검증한 결과는 아니다.
 - Cloud 클라이언트 변경 후 Codex 실행(2026-10-31): `gradle cleanTest test --offline --no-daemon`은 Gradle 네이티브 서비스의 `libnative-platform.dylib` 로딩 실패로 빌드 시작 전에 중단됐다. **기존·추가 테스트 모두 컴파일·실행 미확인**이다. 우회·네트워크 사용은 하지 않았으며, 네트워크 가능한 환경에서 새 의존성을 받은 뒤 전체 테스트를 실행해야 한다. 실제 Eureka 등록·Config 수신·컨테이너 종료 유예도 미검증이다.
 - 같은 변경의 정적 확인: application.yml 3개 문서와 Compose YAML 파싱, `docker compose --env-file /dev/null -f compose.match-local.yml config --format json`의 기본값·전환값(두 Feign URL 빈 값, Cloud 활성화, prod/validate) 검증, `git diff --check`가 통과했다. Compose 검증은 가짜 비밀값으로 설정만 렌더링했으며 컨테이너 실행·네트워크 사용은 없었다.
-- 회원 탈퇴 Kafka 수신(4a): `UserWithdrawnKafkaIntegrationTest`에 EmbeddedKafka·H2 기반 정상 정리, 동일 ID 중복, 잘못된 메시지 뒤 정상 처리, 정리 후 예외의 이력·업무 롤백과 재시도 성공, 2회 재시도 소진 뒤 다음 이벤트 처리, 두 스레드의 동시 PK 삽입 경합 테스트를 추가했다. 정상 반환 후 실제 그룹 오프셋까지 기다려 검증하도록 작성했다. `MatchServiceApplicationTests`에는 Kafka 없는 기본 설정에서 리스너가 시작되지 않는 검증을 추가했다.
+- 회원 탈퇴 Kafka 수신(4a): `UserWithdrawnKafkaIntegrationTest`의 정상 정리·동일 ID 중복·잘못된 메시지 뒤 정상 처리·동시 PK 삽입 경합 검증을 유지한다. 정리 후 예외의 이력·업무 롤백 테스트는 **5회 연속 실패 후 6번째 성공, 처리 이력 1행**으로 보강하고, 재시도 소진 후 건너뛰던 테스트는 **장애 중 같은 파티션 후속 메시지 대기·복구 후 두 이벤트 처리**로 교체했다. 프로그래밍 오류 1회 후 즉시 건너뛰는 테스트도 추가했다. 모두 실제 그룹 오프셋을 확인한다. `UserWithdrawnKafkaStartupIntegrationTest`는 리스너가 꺼진 상태에서 발행을 완료한 뒤 UUID 기반 새 그룹으로 시작해 선발행 이벤트 처리와 오프셋 확정을 확인한다(`earliest` 테스트 덮어쓰기 없음). `MatchServiceApplicationTests`는 Kafka 없는 기본 설정의 리스너 정지를 검증한다.
 - 4a Codex 샌드박스 실행(2026-10-31): `gradle cleanTest test --offline --no-daemon`은 Gradle 네이티브 서비스의 `libnative-platform.dylib` 로딩 실패로 빌드 시작 전에 중단됐다. **당시 기존·추가 테스트 모두 컴파일·실행 미확인**이었다. 우회·의존성 다운로드·네트워크 사용 없이 종료했다. 실제 유저 발행·Kafka 수신은 미검증이며, MariaDB의 READ_COMMITTED 동작은 후속 4b Claude 실행에서 확인했다.
 - 4a 정적 확인: Ruby YAML 파서로 application.yml 3개 문서와 Kafka 기본값·자동 생성 차단·오프셋 설정을 확인했고, 캐시된 Spring Boot 3.5.4 메타데이터에서 관련 설정 키를 확인했다. Python YAML 파싱 시도는 PyYAML 미설치로 실행되지 않았다. `git diff --check`와 신규 파일 공백 점검도 통과했다. 이 정적 확인은 컴파일·런타임 검증을 대체하지 않는다.
-- 4b 실행(Claude, 2026-10-31): Docker MariaDB 11.4.8에서 전체 211개 중 210개, MariaDB 7개 중 6개 통과했다. 기본 REPEATABLE READ의 CLOSED 오류 재현과 READ_COMMITTED의 RECRUITING 정상 동작을 모두 확인했다. 유일한 실패인 복합 PK 컬럼 순서 단언은 순서 무관으로 수정했으며, 복합 PK 중복 거절 등 나머지 단언은 유지했다. Codex는 기존 XML 결과를 확인했으나 수정 후 Gradle·컴파일·Docker·테스트는 실행하지 않았다.
+- 4b 최종 실행(Claude 실행 보고, 2026-10-31): Docker MariaDB 11.4.8에서 **전체 211개 통과·skipped 0**, **MariaDB+Kafka 테스트 3회 반복 통과**. PK 컬럼 순서 단언 수정 후 결과다. **READ_COMMITTED 제거 변이 시 실제 격리 수준 단언 실패**를 확인했다. 기본 REPEATABLE READ의 CLOSED 오류 재현 테스트도 유지한다. 이 결과는 이번 Kafka 수신 보완 전의 Claude 실행 보고이며 Codex의 재실행 결과는 아니다.
+- PR #7 Kafka 수신 보완 후(2026-10-31): **2026-10-31 Claude 실행 보고(샌드박스 밖, Docker MariaDB 11.4.8): `gradle cleanTest test` 213개 통과·skipped 0, `UserWithdrawnKafkaIntegrationTest`·`UserWithdrawnKafkaStartupIntegrationTest`·`MatchMariaDBIntegrationTest` 3회 반복 통과**. Codex의 `gradle test --offline --no-daemon`은 Gradle 네이티브 서비스의 `libnative-platform.dylib` 로딩 실패로 빌드 시작 전에 중단됐다. **컴파일·테스트 미실행**이며 캐시·권한 우회·네트워크 사용은 하지 않았다.
+- 이번 수정의 정적 확인: application.yml 3개 문서의 `earliest`·`record`·자동 생성 차단·백오프 1000/30000ms, Compose Kafka 변수 3개의 기본값·전환값 렌더링, `git diff --check`를 확인했다. 가짜 비밀값과 `--env-file /dev/null`로 설정만 렌더링했으며 컨테이너 실행은 하지 않았다. 컴파일·런타임 검증을 대체하지 않는다.
 
 - Cloud 클라이언트 변경 후 실행 기록(Claude의 샌드박스 밖 실행 보고): 2026-10-31 20:3x KST, 커밋 `055ad89` 기준 `gradle cleanTest test` 197개 통과, `docker build`·Compose 기동 및 `/actuator/health` 200을 확인했다. liveness·readiness는 로컬에서 404였으며 K8s에서 자동 활성화되거나 `management.endpoint.health.probes.enabled=true`로 활성화할 수 있다. `/actuator/env`·`/actuator/beans`는 401, Eureka·Config 오류 로그는 0건이며 graceful shutdown을 확인했다. 실제 Eureka 등록·Config 수신은 미검증이다. 이는 이번 Config 타임아웃 수정 전의 전달받은 실행 결과이며, Codex가 직접 재실행한 결과는 아니다.
 
@@ -187,7 +195,7 @@ Gradle 의존성과 MariaDB·Testcontainers 보조 이미지가 모두 준비된
 
 ## 남은 일
 
-- **회원 탈퇴 연동:** `UserWithdrawn` 구독·처리 이력·재시도 경계를 추가했다(기본 비활성). 유저 서비스 발행·토픽 준비 후 실제 연동과 PK 순서 단언 수정 후 MariaDB 테스트 재실행이 필요하다. 기존 MariaDB 실행 결과는 위 4b 검증 상태에 기록했다.
+- **회원 탈퇴 연동:** `UserWithdrawn` 구독·처리 이력·무제한 재시도 경계를 추가했다(기본 비활성). 유저 서비스 발행·토픽 준비 후 실제 연동과 이번 Kafka 수신 보완 후 회귀 테스트 실행이 필요하다. 수정 전 Claude 실행 결과는 위 4b 검증 상태에 기록했다.
 - **AI 서비스 연동:** 원본 AI는 `MatchService.searchMatches`와 참가 여부 조회를 직접 썼다. AI 서비스가 `GET /api/matches`를 쓰고, 추천의 "이미 참가한 매치 제외"는 별도 조건이 필요하다.
 - **참가 시 원격 호출 위치:** `joinMatch`는 원본 순서를 지키느라 매치 행 잠금을 잡은 뒤 유저 서비스를 호출한다. 잠금 시간이 길어지지 않게 회원 확인을 잠금 전으로 옮기는 것을 검토한다(에러 우선순위가 바뀌므로 팀 확인 필요).
 - **다른 서비스 장애 시 처리:** 매치 서비스는 `503 / EXTERNAL_SERVICE_UNAVAILABLE` 매핑과 운영 Feign 연결 1000ms·응답 3000ms 적용을 완료했다. 팀 공통 규약은 아직 합의 전이며, Circuit Breaker·Fallback(선택 요구사항 5번)도 검토한다.
@@ -205,5 +213,7 @@ Gradle 의존성과 MariaDB·Testcontainers 보조 이미지가 모두 준비된
 
 ## 알려진 한계
 
-- 재시도(200ms × 2회) 소진 시 이벤트는 ERROR 로그(`topic`/`partition`/`offset`)만 남기고 건너뛴다. DLT 등 실패 이벤트 보관은 Kafka 담당(이우진)과 협의가 필요하다.
+- 유저 서비스에서 ACTIVE 상태를 확인한 뒤 저장하기 전 짧은 순간에 탈퇴 정리가 끝나면, 진행 중이던 생성·참가 기록이 정리 대상 ID 수집 이후 저장되어 남을 수 있다. 같은 이벤트를 재전달해도 `processed_event`의 중복 처리로 생략된다. **매치 DB에 탈퇴 사용자 기록을 남기고 생성·참가·탈퇴를 사용자 단위 잠금으로 직렬화하는 해결은 후속 과제**이며 이번에는 구현하지 않았다.
+- 일시 오류의 무제한 재시도 동안 같은 파티션의 후속 메시지도 대기한다. 재시도 불가 오류는 ERROR 로그 후 건너뛰며 별도 DLT·실패 이벤트 보관은 없으므로 Kafka 담당(이우진)과 협의가 필요하다.
+- 재시도하지 않는 예외 분류(`JsonProcessingException`, `IllegalArgumentException`, `NullPointerException`, `ClassCastException`)는 원인 체인까지 보므로, 드물게 일시 오류가 이 예외를 원인으로 가지면 재시도 없이 건너뛸 수 있다.
 - `processed_event`의 실제 PK 컬럼 순서는 `(event_id, consumer_name)`으로 ERD의 `(consumer_name, event_id)`와 다르다. 조회는 항상 전체 키를 사용하므로 동작 영향은 없다. 이 차이는 제출용 테이블 명세서에 기록해야 한다.

@@ -36,6 +36,9 @@ services:
       EUREKA_URL: ${EUREKA_URL:-http://localhost:8761/eureka/}
       CONFIG_ENABLED: ${CONFIG_ENABLED:-false}
       CONFIG_SERVER_URL: ${CONFIG_SERVER_URL:-http://localhost:8888}
+      MATCH_KAFKA_ENABLED: ${MATCH_KAFKA_ENABLED:-false}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}
+      USER_WITHDRAWN_TOPIC: ${USER_WITHDRAWN_TOPIC:-user.withdrawn}
       MATCH_JPA_DDL_AUTO: ${MATCH_JPA_DDL_AUTO:-update}
       # 콜론 없는 기본값 문법으로 이름 기반 호출에 필요한 명시적 빈 값을 보존한다.
       USER_SERVICE_URL: ${USER_SERVICE_URL-http://localhost:8081}
