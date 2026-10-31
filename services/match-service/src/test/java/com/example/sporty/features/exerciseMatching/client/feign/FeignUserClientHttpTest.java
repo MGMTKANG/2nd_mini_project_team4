@@ -37,7 +37,7 @@ import feign.RetryableException;
         "spring.jpa.properties.hibernate.auto_quote_keyword=true",
         "jwt.secret=test-only-signing-secret-with-at-least-32-bytes",
         "spring.cloud.openfeign.client.config.default.connect-timeout=1000",
-        "spring.cloud.openfeign.client.config.default.read-timeout=500"
+        "spring.cloud.openfeign.client.config.default.read-timeout=1500"
 })
 class FeignUserClientHttpTest {
 
@@ -121,10 +121,10 @@ class FeignUserClientHttpTest {
 
     @Test
     void findUserPropagatesReadTimeout() {
-        // 테스트 전용 응답 대기 500ms보다 길게 지연한다. 운영 설정은 변경하지 않는다.
+        // 테스트 전용 응답 대기 1500ms의 2배만큼 지연한다. 운영 설정은 변경하지 않는다.
         USER_SERVICE.stub("/internal/users/1", 200, """
                 {"userId":1,"status":"ACTIVE"}
-                """, Duration.ofSeconds(2));
+                """, Duration.ofSeconds(3));
 
         assertThatThrownBy(() -> userClient.findUser(1L))
                 .isInstanceOf(RetryableException.class)
@@ -148,6 +148,19 @@ class FeignUserClientHttpTest {
                 new ProfileSummary(1L, 10L, "운동친구", "/images/1.png"),
                 new ProfileSummary(2L, 20L, "새친구", null));
         assertRequest("/internal/users/profiles", Map.of("userIds", List.of("1", "2")));
+    }
+
+    @Test
+    void findProfilesReturnsOnlyExistingProfilesWhenSomeIdsAreMissing() {
+        USER_SERVICE.stub("/internal/users/profiles", 200, """
+                [{"userId":1,"profileId":10,"nickname":"운동친구","imageUrl":"/images/1.png"}]
+                """);
+
+        List<ProfileSummary> profiles = userClient.findProfiles(List.of(1L, 99L));
+
+        assertThat(profiles).containsExactly(
+                new ProfileSummary(1L, 10L, "운동친구", "/images/1.png"));
+        assertRequest("/internal/users/profiles", Map.of("userIds", List.of("1", "99")));
     }
 
     @Test

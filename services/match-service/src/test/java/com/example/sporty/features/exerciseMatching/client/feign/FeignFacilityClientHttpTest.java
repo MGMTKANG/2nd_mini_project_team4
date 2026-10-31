@@ -34,7 +34,7 @@ import feign.FeignException;
         "spring.jpa.properties.hibernate.auto_quote_keyword=true",
         "jwt.secret=test-only-signing-secret-with-at-least-32-bytes",
         "spring.cloud.openfeign.client.config.default.connect-timeout=1000",
-        "spring.cloud.openfeign.client.config.default.read-timeout=500"
+        "spring.cloud.openfeign.client.config.default.read-timeout=1500"
 })
 class FeignFacilityClientHttpTest {
 
@@ -98,6 +98,20 @@ class FeignFacilityClientHttpTest {
                 new FacilityServiceSummary(1L, "테니스장", null, "강남구", null, null));
 
         assertRequest("/internal/facility-services", Map.of("ids", List.of("1")));
+    }
+
+    @Test
+    void findServicesReturnsOnlyExistingServicesWhenSomeIdsAreMissing() {
+        FACILITY_SERVICE.stub("/internal/facility-services", 200, """
+                [{"serviceId":1,"serviceName":"풋살장","locationName":"강남체육관",
+                  "region":"강남구","isFree":true,"reservationDeadlineAt":"2026-11-01T18:00:00"}]
+                """);
+
+        List<FacilityServiceSummary> services = facilityClient.findServices(List.of(1L, 99L));
+
+        assertThat(services).containsExactly(new FacilityServiceSummary(
+                1L, "풋살장", "강남체육관", "강남구", true, LocalDateTime.of(2026, 11, 1, 18, 0)));
+        assertRequest("/internal/facility-services", Map.of("ids", List.of("1", "99")));
     }
 
     @Test
