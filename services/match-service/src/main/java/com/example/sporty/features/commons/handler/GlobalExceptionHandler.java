@@ -4,6 +4,7 @@ import com.example.sporty.features.commons.exception.matches.MatchUserNotFoundEx
 import com.example.sporty.features.commons.exception.matches.WithdrawnUserFoundException;
 import com.example.sporty.features.commons.exception.matches.ServiceNotFoundException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchDeleteForbiddenException;
+import com.example.sporty.features.commons.exception.exerciseMatching.ExternalServiceUnavailableException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchModifyForbiddenException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchNotFoundException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchOwnerCannotLeaveException;
@@ -21,6 +22,16 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(ExternalServiceUnavailableException.class)
+    public ResponseEntity<ErrorResponse> handleExternalServiceUnavailable(
+            ExternalServiceUnavailableException e) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ErrorResponse.builder()
+                        .code("EXTERNAL_SERVICE_UNAVAILABLE")
+                        .message(e.getMessage())
+                        .build());
+    }
 
     @ExceptionHandler(MatchParticipantNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleMatchParticipantNotFound(MatchParticipantNotFoundException e) {

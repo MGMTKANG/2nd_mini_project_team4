@@ -16,6 +16,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 import com.example.sporty.features.exerciseMatching.client.FacilityClient;
+import com.example.sporty.features.commons.exception.exerciseMatching.ExternalServiceUnavailableException;
 import com.example.sporty.features.exerciseMatching.client.FacilityClient.FacilityServiceSummary;
 import com.example.sporty.features.exerciseMatching.client.UserClient;
 import com.example.sporty.support.LocalHttpStub;
@@ -175,7 +176,8 @@ class FeignFacilityClientHttpTest {
                 """);
 
         assertThatThrownBy(() -> facilityClient.searchServiceIds("강남", true))
-                .isInstanceOf(FeignException.InternalServerError.class);
+                .isInstanceOf(ExternalServiceUnavailableException.class)
+                .hasCauseInstanceOf(FeignException.InternalServerError.class);
 
         assertRequest("/internal/facility-services/ids",
                 Map.of("region", List.of("강남"), "isFree", List.of("true")));

@@ -17,6 +17,7 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 import com.example.sporty.features.exerciseMatching.client.FacilityClient;
+import com.example.sporty.features.commons.exception.exerciseMatching.ExternalServiceUnavailableException;
 import com.example.sporty.features.exerciseMatching.client.UserClient;
 import com.example.sporty.features.exerciseMatching.client.UserClient.ProfileSummary;
 import com.example.sporty.features.exerciseMatching.client.UserClient.UserSummary;
@@ -114,7 +115,8 @@ class FeignUserClientHttpTest {
                 """);
 
         assertThatThrownBy(() -> userClient.findUser(1L))
-                .isInstanceOf(FeignException.InternalServerError.class);
+                .isInstanceOf(ExternalServiceUnavailableException.class)
+                .hasCauseInstanceOf(FeignException.InternalServerError.class);
 
         assertRequest("/internal/users/1", Map.of());
     }
@@ -127,7 +129,8 @@ class FeignUserClientHttpTest {
                 """, Duration.ofSeconds(3));
 
         assertThatThrownBy(() -> userClient.findUser(1L))
-                .isInstanceOf(RetryableException.class)
+                .isInstanceOf(ExternalServiceUnavailableException.class)
+                .hasCauseInstanceOf(RetryableException.class)
                 .hasRootCauseInstanceOf(SocketTimeoutException.class);
 
         assertRequest("/internal/users/1", Map.of());
