@@ -1,0 +1,43 @@
+server:
+    port: 8082
+
+spring:
+    application:
+        name: match-service
+    profiles:
+        default: local
+    config:
+        import:
+        - "optional:file:./.env[.properties]"
+
+    datasource:
+        driver-class-name: org.mariadb.jdbc.Driver
+        url: ${MATCH_DB_URL:jdbc:mariadb://localhost:3306/match_db}
+        username: ${MATCH_DB_USERNAME:match}
+        password: ${MATCH_DB_PASSWORD:}
+
+    jpa:
+        hibernate:
+            ddl-auto: update
+        properties:
+            hibernate:
+                "[format_sql]": true
+                dialect: org.hibernate.dialect.MariaDBDialect
+
+jwt:
+    secret: ${JWT_SECRET_KEY}
+
+# 유저·체육시설 서비스 주소. Eureka 연동 후에는 url을 비우고 서비스 이름으로 찾는다.
+clients:
+    user-service:
+        url: ${USER_SERVICE_URL:http://localhost:8081}
+    facility-service:
+        url: ${FACILITY_SERVICE_URL:http://localhost:8083}
+
+---
+spring:
+    config:
+        activate:
+            on-profile: local
+    jpa:
+        show-sql: true
