@@ -156,16 +156,17 @@ public class MatchService {
     // EM-06: 참가자 저장과 정원 도달 시 모집 마감을 하나의 트랜잭션으로 처리한다.
     @Transactional
     public MatchParticipantResponseDto joinMatch(Long matchId, Long userId) {
-        userGuard.requireActive(userId);
-        MatchEntity match = matchRepository.findByIdForUpdate(matchId)
-                .orElseThrow(MatchNotFoundException::new);
-
         UserSummary user = userClient.findUser(userId)
                 .orElseThrow(MatchUserNotFoundException::new);
 
         if (!user.isActive()) {
             throw new WithdrawnUserFoundException();
         }
+
+        // 원격 확인 중에는 행을 잠그지 않고, 쓰기 직전 로컬 탈퇴 상태를 잠금으로 확정한다.
+        userGuard.requireActive(userId);
+        MatchEntity match = matchRepository.findByIdForUpdate(matchId)
+                .orElseThrow(MatchNotFoundException::new);
 
         // OWNER도 이미 등록된 참가자이므로 역할과 관계없이 중복 참여를 막는다.
         if (matchParticipantRepository.existsByMatch_IdAndUserId(matchId, userId)) {
@@ -224,8 +225,6 @@ public class MatchService {
 
     @Transactional
     public Long createMatch(Long userId, MatchCreateRequestDto req) {
-        userGuard.requireActive(userId);
-
         // 1. 생성 요청 회원 확인
         UserSummary user = userClient.findUser(userId)
             .orElseThrow(MatchUserNotFoundException::new);
@@ -237,6 +236,9 @@ public class MatchService {
         // Validate the catalog before creating either match or participant records.
         facilityClient.findService(req.getServiceId())
             .orElseThrow(ServiceNotFoundException::new);
+
+        // 원격 조회 중 탈퇴가 커밋됐을 수 있으므로 저장 전에 로컬 상태를 잠가 확인한다.
+        userGuard.requireActive(userId);
 
         // 3. create MatchEntity and save
         MatchEntity savedMatchEntity =

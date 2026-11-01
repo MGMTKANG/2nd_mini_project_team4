@@ -9,6 +9,8 @@ import com.example.sporty.support.FakeFacilityClient;
 import com.example.sporty.support.FakeUserClient;
 
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
@@ -40,6 +42,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.example.sporty.features.commons.config.SecurityConfig;
+import com.example.sporty.features.commons.exception.exerciseMatching.ExternalServiceUnavailableException;
+import com.example.sporty.features.commons.exception.matches.WithdrawnUserFoundException;
 import com.example.sporty.features.commons.filter.JwtAuthenticationFilter;
 import com.example.sporty.features.commons.token.JwtProvider;
 import com.example.sporty.features.commons.util.SportType;
@@ -232,6 +236,56 @@ class MatchDetailControllerTest {
                 new ProfileSummary(1L, 401L, "생성자", "https://example.com/owner.png"),
                 new ProfileSummary(2L, 402L, "참가자", null)));
         when(facilityClient.findService(7L)).thenReturn(Optional.of(FacilityFixtures.service(7L, true)));
+    }
+
+    @ParameterizedTest(name = "remote={0}, facility={1}: {3}")
+    @CsvSource({
+            "MISSING, NORMAL, 401, MATCH_USER_NOT_FOUND",
+            "WITHDRAWN, NORMAL, 401, USER_WITHDRAWN",
+            "ERROR, NORMAL, 503, EXTERNAL_SERVICE_UNAVAILABLE",
+            "ACTIVE, MISSING, 404, SERVICE_NOT_FOUND",
+            "ACTIVE, ERROR, 503, EXTERNAL_SERVICE_UNAVAILABLE",
+            "ACTIVE, NORMAL, 401, USER_WITHDRAWN"
+    })
+    @DisplayName("로컬 탈퇴 회원의 생성 오류는 원격 회원 → 시설 → 로컬 탈퇴 순이며 쓰기가 없다")
+    void createFailurePriority(String remoteUser, String remoteFacility, int expectedStatus,
+            String expectedCode) throws Exception {
+        doThrow(new WithdrawnUserFoundException()).when(userGuard).requireActive(1L);
+        switch (remoteUser) {
+            case "MISSING" -> when(userClient.findUser(1L)).thenReturn(Optional.empty());
+            case "ERROR" -> when(userClient.findUser(1L))
+                    .thenThrow(new ExternalServiceUnavailableException("user-service"));
+            default -> when(userClient.findUser(1L))
+                    .thenReturn(Optional.of(new UserSummary(1L, remoteUser)));
+        }
+        switch (remoteFacility) {
+            case "MISSING" -> when(facilityClient.findService(7L)).thenReturn(Optional.empty());
+            case "ERROR" -> when(facilityClient.findService(7L))
+                    .thenThrow(new ExternalServiceUnavailableException("facility-service"));
+            default -> when(facilityClient.findService(7L))
+                    .thenReturn(Optional.of(FacilityFixtures.service(7L, true)));
+        }
+
+        mvc.perform(post("/api/matches")
+                        .header("Authorization", "Bearer " + new JwtProvider(SECRET).createAccessToken(1L))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(createRequest(", \"genderGroup\": \"MIXED\"")))
+                .andExpect(status().is(expectedStatus))
+                .andExpect(jsonPath("$.code").value(expectedCode));
+
+        var order = inOrder(userClient, facilityClient, userGuard);
+        order.verify(userClient).findUser(1L);
+        if ("ACTIVE".equals(remoteUser)) {
+            order.verify(facilityClient).findService(7L);
+            if ("NORMAL".equals(remoteFacility)) {
+                order.verify(userGuard).requireActive(1L);
+            } else {
+                verifyNoInteractions(userGuard);
+            }
+        } else {
+            verifyNoInteractions(facilityClient, userGuard);
+        }
+        verifyNoInteractions(matchRepository, matchParticipantRepository);
     }
 
     @ParameterizedTest

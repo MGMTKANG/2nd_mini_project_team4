@@ -129,7 +129,7 @@ class MatchRemoteFailureHttpIntegrationTest {
     }
 
     @Test
-    void joinUserServerErrorDoesNotSaveAndReleasesLock() throws Exception {
+    void joinUserServerErrorDoesNotSaveAndAllowsRetry() throws Exception {
         Long matchId = createMatch();
         USER_SERVICE.stub("/internal/users/2", 500, "{}");
 
@@ -139,7 +139,7 @@ class MatchRemoteFailureHttpIntegrationTest {
                 .filter(request -> request.path().equals("/internal/users/2"))).hasSize(1);
 
         USER_SERVICE.stub("/internal/users/2", 200, "{\"userId\":2,\"status\":\"ACTIVE\"}");
-        // 실패 요청과 다른 스레드/트랜잭션에서 재참가해 잠금 해제를 확인한다.
+        // 원격 조회 실패 후 다른 스레드/트랜잭션의 재시도가 성공하는지 확인한다.
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
             executor.submit(() -> {

@@ -12,6 +12,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -33,6 +35,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.MockedStatic;
@@ -45,6 +48,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import com.example.sporty.features.commons.config.SecurityConfig;
+import com.example.sporty.features.commons.exception.exerciseMatching.ExternalServiceUnavailableException;
+import com.example.sporty.features.commons.exception.matches.WithdrawnUserFoundException;
 import com.example.sporty.features.commons.filter.JwtAuthenticationFilter;
 import com.example.sporty.features.commons.token.JwtProvider;
 import com.example.sporty.features.exerciseMatching.domain.entity.MatchEntity;
@@ -198,11 +203,58 @@ class MatchJoinControllerTest {
     @Test
     @DisplayName("[EM06-006] 없는 매치는 404이며 참가자를 저장하지 않는다")
     void missingMatchReturnsNotFound() throws Exception {
+        when(userClient.findUser(2L)).thenReturn(Optional.of(new UserSummary(2L, "ACTIVE")));
+
         mvc.perform(post("/api/matches/99999/participants").header("Authorization", bearer(2L)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("MATCH_NOT_FOUND"));
 
-        verifyNoInteractions(matchParticipantRepository, userClient);
+        verify(userClient).findUser(2L);
+        verifyNoInteractions(matchParticipantRepository);
+    }
+
+    @ParameterizedTest(name = "localWithdrawn={0}, remote={1}: {3}")
+    @CsvSource({
+            "false, MISSING, 401, MATCH_USER_NOT_FOUND",
+            "false, WITHDRAWN, 401, USER_WITHDRAWN",
+            "true, MISSING, 401, MATCH_USER_NOT_FOUND",
+            "true, ERROR, 503, EXTERNAL_SERVICE_UNAVAILABLE",
+            "true, ACTIVE, 401, USER_WITHDRAWN",
+            "false, ACTIVE, 404, MATCH_NOT_FOUND"
+    })
+    @DisplayName("없는 매치의 참가 오류는 원격 회원 → 로컬 탈퇴 → 매치 순이며 쓰기가 없다")
+    void joinFailurePriority(boolean localWithdrawn, String remoteUser, int expectedStatus,
+            String expectedCode) throws Exception {
+        when(matchRepository.findByIdForUpdate(99999L)).thenReturn(Optional.empty());
+        if (localWithdrawn) {
+            doThrow(new WithdrawnUserFoundException()).when(userGuard).requireActive(2L);
+        }
+        switch (remoteUser) {
+            case "MISSING" -> when(userClient.findUser(2L)).thenReturn(Optional.empty());
+            case "ERROR" -> when(userClient.findUser(2L))
+                    .thenThrow(new ExternalServiceUnavailableException("user-service"));
+            default -> when(userClient.findUser(2L))
+                    .thenReturn(Optional.of(new UserSummary(2L, remoteUser)));
+        }
+
+        mvc.perform(post("/api/matches/99999/participants").header("Authorization", bearer(2L)))
+                .andExpect(status().is(expectedStatus))
+                .andExpect(jsonPath("$.code").value(expectedCode));
+
+        var order = inOrder(userClient, userGuard, matchRepository);
+        order.verify(userClient).findUser(2L);
+        if ("ACTIVE".equals(remoteUser)) {
+            order.verify(userGuard).requireActive(2L);
+            if (!localWithdrawn) {
+                order.verify(matchRepository).findByIdForUpdate(99999L);
+            } else {
+                verifyNoInteractions(matchRepository);
+            }
+        } else {
+            verifyNoInteractions(userGuard, matchRepository);
+        }
+        verify(matchRepository, never()).save(any());
+        verifyNoInteractions(matchParticipantRepository, facilityClient);
     }
 
     @Test
