@@ -15,6 +15,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Import;
 import org.springframework.core.io.FileSystemResource;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -61,18 +62,39 @@ class MatchUserGuardMariaDBIntegrationTest extends MariaDBIntegrationTestSupport
 
     @Test
     void deploymentSqlMatchesHibernateAndPreservesWithdrawalOnReapply() throws Exception {
-        var migration = new FileSystemResource("docs/sql/2026-11-01-match-user-state.sql");
+        var migrations = List.of(
+                new FileSystemResource("docs/sql/2026-11-01-match-user-state.sql"),
+                new FileSystemResource("docs/sql/2026-11-02-processed-event.sql"));
         try (var connection = dataSource.getConnection(); var statement = connection.createStatement()) {
+            statement.execute("DROP TABLE processed_event");
             statement.execute("DROP TABLE match_user_state");
-            ScriptUtils.executeSqlScript(connection, migration);
+            for (var migration : migrations) {
+                ScriptUtils.executeSqlScript(connection, migration);
+            }
         }
         entityManagerFactory.unwrap(SessionFactory.class).getSchemaManager().validateMappedObjects();
         Long userId = ids.get(2L);
         new TransactionTemplate(manager).executeWithoutResult(tx -> guard.markWithdrawn(userId));
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        String eventId = UUID.randomUUID().toString();
+        LocalDateTime processedAt = LocalDateTime.of(2026, 11, 2, 12, 0);
+        jdbc.update("INSERT INTO processed_event (consumer_name, event_id, processed_at) VALUES (?, ?, ?)",
+                UserWithdrawnHandler.CONSUMER_NAME, eventId, processedAt);
+        var historyBeforeReapply = jdbc.queryForList("SELECT * FROM processed_event");
         try (var connection = dataSource.getConnection()) {
-            ScriptUtils.executeSqlScript(connection, migration);
+            for (var migration : migrations) {
+                ScriptUtils.executeSqlScript(connection, migration);
+            }
         }
+        entityManagerFactory.unwrap(SessionFactory.class).getSchemaManager().validateMappedObjects();
         assertThat(states.findById(userId).orElseThrow().isWithdrawn()).isTrue();
+        assertThat(events.existsById(eventKey(eventId))).isTrue();
+        assertThat(jdbc.queryForList("SELECT * FROM processed_event")).isEqualTo(historyBeforeReapply);
+        assertThat(jdbc.queryForList("""
+                SELECT COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE
+                WHERE CONSTRAINT_SCHEMA=DATABASE() AND TABLE_NAME='processed_event' AND CONSTRAINT_NAME='PRIMARY'
+                ORDER BY ORDINAL_POSITION
+                """, String.class)).containsExactly("consumer_name", "event_id");
     }
 
     @ParameterizedTest(name = "registration first, join={0}")
