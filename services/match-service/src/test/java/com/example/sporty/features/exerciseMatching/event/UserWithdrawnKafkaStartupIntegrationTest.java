@@ -8,7 +8,9 @@ import static org.mockito.Mockito.verify;
 import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import javax.sql.DataSource;
 
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.AdminClientConfig;
@@ -28,10 +30,12 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import com.example.sporty.features.exerciseMatching.domain.entity.ProcessedEventId;
 import com.example.sporty.features.exerciseMatching.repository.ProcessedEventRepository;
 import com.example.sporty.features.exerciseMatching.service.MatchService;
+import com.example.sporty.support.MatchDatabaseCleanup;
 
 @SpringBootTest(properties = {
         "spring.datasource.url=jdbc:h2:mem:match-user-withdrawn-startup;MODE=MariaDB",
@@ -60,6 +64,8 @@ class UserWithdrawnKafkaStartupIntegrationTest {
     @Autowired private EmbeddedKafkaBroker broker;
     @Autowired private KafkaListenerEndpointRegistry listeners;
     @Autowired private ProcessedEventRepository processedEvents;
+    @Autowired private PlatformTransactionManager transactionManager;
+    @Autowired private DataSource dataSource;
     @MockitoSpyBean private MatchService matchService;
 
     @Test
@@ -96,9 +102,12 @@ class UserWithdrawnKafkaStartupIntegrationTest {
             assertThat(processedEvents.count()).isEqualTo(1);
             verify(matchService, times(1)).removeMatchesForWithdrawal(1L);
         } finally {
-            container.stop();
+            CountDownLatch stopped = new CountDownLatch(1);
+            container.stop(stopped::countDown);
+            assertThat(stopped.await(15, TimeUnit.SECONDS)).as("Kafka 리스너 종료").isTrue();
             producer.destroy();
             producerFactory.destroy();
+            MatchDatabaseCleanup.clear(transactionManager, dataSource);
         }
     }
 }

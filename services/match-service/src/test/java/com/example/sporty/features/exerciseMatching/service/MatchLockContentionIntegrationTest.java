@@ -16,6 +16,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import javax.sql.DataSource;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,6 +48,7 @@ import com.example.sporty.support.FakeClientsConfig;
 import com.example.sporty.support.FakeFacilityClient;
 import com.example.sporty.support.FakeUserClient;
 import com.example.sporty.support.MatchUserFixtures;
+import com.example.sporty.support.MatchDatabaseCleanup;
 
 @DataJpaTest(properties = {
         "spring.datasource.url=jdbc:h2:mem:match-lock-contention;MODE=MariaDB;LOCK_TIMEOUT=10000",
@@ -66,6 +68,7 @@ class MatchLockContentionIntegrationTest {
     @MockitoSpyBean private MatchRepository matchRepository;
     @Autowired private MatchParticipantRepository participantRepository;
     @Autowired private PlatformTransactionManager transactionManager;
+    @Autowired private DataSource dataSource;
     @Autowired private FakeUserClient fakeUserClient;
     @Autowired private FakeFacilityClient fakeFacilityClient;
 
@@ -82,10 +85,7 @@ class MatchLockContentionIntegrationTest {
 
     @AfterEach
     void tearDown() {
-        transactions.executeWithoutResult(status -> {
-            participantRepository.deleteAllInBatch();
-            matchRepository.deleteAllInBatch();
-        });
+        MatchDatabaseCleanup.clear(transactionManager, dataSource);
     }
 
     @Test

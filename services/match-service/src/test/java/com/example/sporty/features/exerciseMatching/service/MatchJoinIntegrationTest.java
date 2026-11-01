@@ -7,6 +7,7 @@ import com.example.sporty.features.exerciseMatching.client.FacilityClient;
 import com.example.sporty.support.FakeClientsConfig;
 import com.example.sporty.support.FakeFacilityClient;
 import com.example.sporty.support.FakeUserClient;
+import com.example.sporty.support.MatchDatabaseCleanup;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -23,7 +24,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import javax.sql.DataSource;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -78,6 +81,9 @@ class MatchJoinIntegrationTest {
     private PlatformTransactionManager transactionManager;
 
     @Autowired
+    private DataSource dataSource;
+
+    @Autowired
     private EntityManager entityManager;
 
     @Autowired
@@ -95,12 +101,16 @@ class MatchJoinIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        MatchDatabaseCleanup.clear(transactionManager, dataSource);
         new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
-            matchParticipantRepository.deleteAllInBatch();
-            matchRepository.deleteAllInBatch();
             users = MatchUserFixtures.create(fakeUserClient, 11);
             serviceId = FacilityFixtures.create(fakeFacilityClient, FacilityFixtures.newServiceId()).serviceId();
         });
+    }
+
+    @AfterEach
+    void cleanUp() {
+        MatchDatabaseCleanup.clear(transactionManager, dataSource);
     }
 
     @Test

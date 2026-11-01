@@ -19,6 +19,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import javax.sql.DataSource;
 
 import org.apache.kafka.clients.admin.AdminClient;
 import org.apache.kafka.clients.admin.AdminClientConfig;
@@ -60,6 +61,7 @@ import com.example.sporty.features.exerciseMatching.repository.MatchRepository;
 import com.example.sporty.features.exerciseMatching.repository.MatchUserStateRepository;
 import com.example.sporty.features.exerciseMatching.repository.ProcessedEventRepository;
 import com.example.sporty.features.exerciseMatching.service.MatchService;
+import com.example.sporty.support.MatchDatabaseCleanup;
 
 @SpringBootTest(properties = {
         "spring.datasource.url=jdbc:h2:mem:match-user-withdrawn;MODE=MariaDB;LOCK_TIMEOUT=10000",
@@ -88,6 +90,7 @@ class UserWithdrawnKafkaIntegrationTest {
     @Autowired private MatchRepository matches;
     @Autowired private MatchParticipantRepository participants;
     @Autowired private PlatformTransactionManager transactionManager;
+    @Autowired private DataSource dataSource;
     @MockitoSpyBean private MatchService matchService;
     @MockitoSpyBean private ProcessedEventRepository processedEvents;
 
@@ -105,20 +108,20 @@ class UserWithdrawnKafkaIntegrationTest {
                 KafkaTestUtils.producerProps(broker), new StringSerializer(), new StringSerializer());
         producer = new KafkaTemplate<>(producerFactory);
         admin = AdminClient.create(Map.of(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, broker.getBrokersAsString()));
+        listeners.start();
         ContainerTestUtils.waitForAssignment(listeners.getListenerContainer("userWithdrawnListener"), 1);
     }
 
     @AfterEach
-    void tearDown() {
+    void tearDown() throws InterruptedException {
         producer.destroy();
         producerFactory.destroy();
         admin.close(Duration.ofSeconds(2));
-        transactions.executeWithoutResult(status -> {
-            participants.deleteAllInBatch();
-            matches.deleteAllInBatch();
-            processedEvents.deleteAllInBatch();
-            userStates.deleteAllInBatch();
-        });
+        // 생산자 종료와 소비 스레드 종료를 모두 기다린 뒤 DB를 비운다.
+        CountDownLatch stopped = new CountDownLatch(1);
+        listeners.stop(stopped::countDown);
+        assertThat(stopped.await(15, TimeUnit.SECONDS)).as("Kafka 리스너 종료").isTrue();
+        MatchDatabaseCleanup.clear(transactionManager, dataSource);
     }
 
     @Test

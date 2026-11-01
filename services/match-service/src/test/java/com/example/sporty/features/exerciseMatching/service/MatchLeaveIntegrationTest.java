@@ -7,6 +7,7 @@ import com.example.sporty.features.exerciseMatching.client.FacilityClient;
 import com.example.sporty.support.FakeClientsConfig;
 import com.example.sporty.support.FakeFacilityClient;
 import com.example.sporty.support.FakeUserClient;
+import com.example.sporty.support.MatchDatabaseCleanup;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -14,11 +15,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import javax.sql.DataSource;
 import jakarta.persistence.EntityManager;
 import com.example.sporty.features.exerciseMatching.domain.enums.GenderGroup;
 import com.example.sporty.support.MatchUserFixtures;
 import com.example.sporty.support.FacilityFixtures;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -68,6 +71,9 @@ class MatchLeaveIntegrationTest {
     private PlatformTransactionManager transactionManager;
 
     @Autowired
+    private DataSource dataSource;
+
+    @Autowired
     private EntityManager entityManager;
 
     @Autowired
@@ -89,9 +95,8 @@ class MatchLeaveIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        MatchDatabaseCleanup.clear(transactionManager, dataSource);
         new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
-            matchParticipantRepository.deleteAllInBatch();
-            matchRepository.deleteAllInBatch();
             users = MatchUserFixtures.create(fakeUserClient, 11);
             serviceId = FacilityFixtures.create(fakeFacilityClient, FacilityFixtures.newServiceId()).serviceId();
             MatchEntity match = matchRepository.save(MatchEntity.builder()
@@ -113,6 +118,11 @@ class MatchLeaveIntegrationTest {
                     .stream().map(MatchParticipantEntity::getId).toList();
             matchParticipantRepository.save(participant(otherMatch, 1L, MatchParticipantRole.OWNER));
         });
+    }
+
+    @AfterEach
+    void cleanUp() {
+        MatchDatabaseCleanup.clear(transactionManager, dataSource);
     }
 
     @Test

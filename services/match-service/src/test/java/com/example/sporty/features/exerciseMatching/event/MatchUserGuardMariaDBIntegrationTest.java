@@ -55,12 +55,7 @@ class MatchUserGuardMariaDBIntegrationTest extends MariaDBIntegrationTestSupport
 
     @AfterEach
     void cleanUp() {
-        new TransactionTemplate(manager).executeWithoutResult(status -> {
-            participants.deleteAllInBatch();
-            matches.deleteAllInBatch();
-            events.deleteAllInBatch();
-            states.deleteAllInBatch();
-        });
+        MatchDatabaseCleanup.clear(manager, dataSource);
     }
 
     @Test

@@ -12,8 +12,10 @@ import java.net.ConnectException;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
+import javax.sql.DataSource;
 
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -39,6 +41,7 @@ import com.example.sporty.features.exerciseMatching.domain.enums.SkillLevel;
 import com.example.sporty.features.exerciseMatching.repository.MatchParticipantRepository;
 import com.example.sporty.features.exerciseMatching.repository.MatchRepository;
 import com.example.sporty.support.LocalHttpStub;
+import com.example.sporty.support.MatchDatabaseCleanup;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import feign.RetryableException;
@@ -68,6 +71,7 @@ class MatchModifyConnectionFailureHttpIntegrationTest {
     @Autowired private MatchRepository matchRepository;
     @Autowired private MatchParticipantRepository participantRepository;
     @Autowired private PlatformTransactionManager transactionManager;
+    @Autowired private DataSource dataSource;
     @MockitoSpyBean private FeignFacilityClient facilityClient;
 
     @DynamicPropertySource
@@ -79,6 +83,11 @@ class MatchModifyConnectionFailureHttpIntegrationTest {
     @AfterAll
     static void stopUserStub() {
         USER_SERVICE.close();
+    }
+
+    @AfterEach
+    void cleanUp() {
+        MatchDatabaseCleanup.clear(transactionManager, dataSource);
     }
 
     @Test

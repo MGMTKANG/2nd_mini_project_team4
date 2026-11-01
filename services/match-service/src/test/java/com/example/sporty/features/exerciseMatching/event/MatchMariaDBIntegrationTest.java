@@ -24,6 +24,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
+import javax.sql.DataSource;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -52,7 +53,6 @@ import com.example.sporty.features.exerciseMatching.domain.enums.MatchStatus;
 import com.example.sporty.features.exerciseMatching.domain.enums.SkillLevel;
 import com.example.sporty.features.exerciseMatching.repository.MatchParticipantRepository;
 import com.example.sporty.features.exerciseMatching.repository.MatchRepository;
-import com.example.sporty.features.exerciseMatching.repository.MatchUserStateRepository;
 import com.example.sporty.features.exerciseMatching.repository.ProcessedEventRepository;
 import com.example.sporty.features.exerciseMatching.service.MatchService;
 import com.example.sporty.support.FacilityFixtures;
@@ -61,6 +61,7 @@ import com.example.sporty.support.FakeFacilityClient;
 import com.example.sporty.support.FakeUserClient;
 import com.example.sporty.support.MariaDBIntegrationTestSupport;
 import com.example.sporty.support.MatchUserFixtures;
+import com.example.sporty.support.MatchDatabaseCleanup;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Import({MatchService.class, FakeClientsConfig.class, UserWithdrawnHandler.class,
@@ -75,6 +76,7 @@ class MatchMariaDBIntegrationTest extends MariaDBIntegrationTestSupport {
     @Autowired private UserWithdrawnHandler handler;
     @Autowired private UserWithdrawnListener listener;
     @Autowired private PlatformTransactionManager transactionManager;
+    @Autowired private DataSource dataSource;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private FakeUserClient fakeUsers;
     @Autowired private FakeFacilityClient fakeFacilities;
@@ -82,8 +84,6 @@ class MatchMariaDBIntegrationTest extends MariaDBIntegrationTestSupport {
     @MockitoSpyBean private MatchRepository matches;
     @MockitoSpyBean private MatchParticipantRepository participants;
     @MockitoSpyBean private ProcessedEventRepository processedEvents;
-
-    @Autowired private MatchUserStateRepository userStates;
 
     private TransactionTemplate transactions;
     private Map<Long, Long> users;
@@ -99,12 +99,7 @@ class MatchMariaDBIntegrationTest extends MariaDBIntegrationTestSupport {
 
     @AfterEach
     void tearDown() {
-        transactions.executeWithoutResult(status -> {
-            participants.deleteAllInBatch();
-            matches.deleteAllInBatch();
-            processedEvents.deleteAllInBatch();
-            userStates.deleteAllInBatch();
-        });
+        MatchDatabaseCleanup.clear(transactionManager, dataSource);
     }
 
     @Test

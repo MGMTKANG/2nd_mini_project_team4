@@ -15,6 +15,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import javax.sql.DataSource;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,6 +48,7 @@ import com.example.sporty.support.FakeClientsConfig;
 import com.example.sporty.support.FakeFacilityClient;
 import com.example.sporty.support.FakeUserClient;
 import com.example.sporty.support.MatchUserFixtures;
+import com.example.sporty.support.MatchDatabaseCleanup;
 
 @DataJpaTest(properties = {
         "spring.datasource.url=jdbc:h2:mem:match-withdrawal;MODE=MariaDB;LOCK_TIMEOUT=10000",
@@ -66,6 +68,7 @@ class MatchWithdrawalIntegrationTest {
     @MockitoSpyBean private MatchRepository matchRepository;
     @MockitoSpyBean private MatchParticipantRepository participantRepository;
     @Autowired private PlatformTransactionManager transactionManager;
+    @Autowired private DataSource dataSource;
     @Autowired private FakeUserClient fakeUserClient;
     @Autowired private FakeFacilityClient fakeFacilityClient;
 
@@ -82,10 +85,7 @@ class MatchWithdrawalIntegrationTest {
 
     @AfterEach
     void tearDown() {
-        transactions.executeWithoutResult(status -> {
-            participantRepository.deleteAllInBatch();
-            matchRepository.deleteAllInBatch();
-        });
+        MatchDatabaseCleanup.clear(transactionManager, dataSource);
     }
 
     @Test

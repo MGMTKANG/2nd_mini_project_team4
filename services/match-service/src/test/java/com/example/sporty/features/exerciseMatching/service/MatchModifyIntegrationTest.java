@@ -12,7 +12,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import javax.sql.DataSource;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -23,7 +25,6 @@ import org.springframework.context.annotation.Import;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchCapacityBelowParticipantsException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchRecruitmentClosedException;
@@ -45,6 +46,7 @@ import com.example.sporty.support.FakeClientsConfig;
 import com.example.sporty.support.FakeFacilityClient;
 import com.example.sporty.support.FakeUserClient;
 import com.example.sporty.support.MatchUserFixtures;
+import com.example.sporty.support.MatchDatabaseCleanup;
 
 @DataJpaTest(properties = {
         "spring.jpa.hibernate.ddl-auto=create-drop",
@@ -61,6 +63,7 @@ class MatchModifyIntegrationTest {
     @Autowired private MatchRepository matchRepository;
     @Autowired private MatchParticipantRepository matchParticipantRepository;
     @Autowired private PlatformTransactionManager transactionManager;
+    @Autowired private DataSource dataSource;
     @Autowired private FakeUserClient fakeUserClient;
     @Autowired private FakeFacilityClient fakeFacilityClient;
 
@@ -69,12 +72,14 @@ class MatchModifyIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
-            matchParticipantRepository.deleteAllInBatch();
-            matchRepository.deleteAllInBatch();
-        });
+        MatchDatabaseCleanup.clear(transactionManager, dataSource);
         users = MatchUserFixtures.create(fakeUserClient, 3);
         serviceId = FacilityFixtures.create(fakeFacilityClient, FacilityFixtures.newServiceId()).serviceId();
+    }
+
+    @AfterEach
+    void cleanUp() {
+        MatchDatabaseCleanup.clear(transactionManager, dataSource);
     }
 
     @Test

@@ -19,8 +19,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import javax.sql.DataSource;
 
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -35,7 +37,6 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import com.example.sporty.features.commons.exception.exerciseMatching.ExternalServiceUnavailableException;
 import com.example.sporty.features.commons.token.JwtProvider;
@@ -52,6 +53,7 @@ import com.example.sporty.features.exerciseMatching.domain.enums.SkillLevel;
 import com.example.sporty.features.exerciseMatching.repository.MatchParticipantRepository;
 import com.example.sporty.features.exerciseMatching.repository.MatchRepository;
 import com.example.sporty.support.LocalHttpStub;
+import com.example.sporty.support.MatchDatabaseCleanup;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import feign.FeignException;
@@ -91,6 +93,7 @@ class MatchRemoteFailureHttpIntegrationTest {
     @Autowired private MatchRepository matchRepository;
     @Autowired private MatchParticipantRepository participantRepository;
     @Autowired private PlatformTransactionManager transactionManager;
+    @Autowired private DataSource dataSource;
     @Autowired private UserClient userClient;
     @MockitoSpyBean private FeignFacilityClient facilityClient;
 
@@ -104,10 +107,7 @@ class MatchRemoteFailureHttpIntegrationTest {
     void setUp() {
         assertThat(userClient).isInstanceOf(FeignUserClient.class);
         assertThat(facilityClient).isInstanceOf(FeignFacilityClient.class);
-        new TransactionTemplate(transactionManager).executeWithoutResult(transaction -> {
-            participantRepository.deleteAllInBatch();
-            matchRepository.deleteAllInBatch();
-        });
+        MatchDatabaseCleanup.clear(transactionManager, dataSource);
         USER_SERVICE.reset();
         FACILITY_SERVICE.reset();
         USER_SERVICE.stub("/internal/users/1", 200, "{\"userId\":1,\"status\":\"ACTIVE\"}");
@@ -121,6 +121,11 @@ class MatchRemoteFailureHttpIntegrationTest {
     static void stopStubs() {
         USER_SERVICE.close();
         FACILITY_SERVICE.close();
+    }
+
+    @AfterEach
+    void cleanUp() {
+        MatchDatabaseCleanup.clear(transactionManager, dataSource);
     }
 
     @Test
