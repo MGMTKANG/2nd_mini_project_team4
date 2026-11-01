@@ -279,8 +279,6 @@ public class MatchService {
         if (req.getMaxParticipant() < participantCount) {
             throw new MatchCapacityBelowParticipantsException();
         }
-        boolean capacityChanged = !match.getMaxParticipant().equals(req.getMaxParticipant());
-
         match.update(
             req.getTitle(),
             req.getDescription(),
@@ -291,13 +289,11 @@ public class MatchService {
             req.getGenderGroup()
         );
 
-        if (capacityChanged) {
-            if (participantCount == match.getMaxParticipant()) {
-                match.closeRecruitment();
-            } else if (match.getStartAt().isAfter(LocalDateTime.now(MATCH_TIME_ZONE))) {
-                // 참가 탈퇴와 같은 기준으로, 수정 후 시작 시각이 지나지 않은 매치만 모집을 재개한다.
-                match.reopenRecruitment();
-            }
+        if (participantCount >= match.getMaxParticipant()) {
+            match.closeRecruitment();
+        } else if (match.getStartAt().isAfter(LocalDateTime.now(MATCH_TIME_ZONE))) {
+            // 참가 탈퇴와 같은 기준으로, 수정 후 시작 시각이 지나지 않은 매치만 모집을 재개한다.
+            match.reopenRecruitment();
         }
 
         // 응답용 원격 조회 실패는 이 트랜잭션 경계 안에서 처리해 변경을 커밋한다.

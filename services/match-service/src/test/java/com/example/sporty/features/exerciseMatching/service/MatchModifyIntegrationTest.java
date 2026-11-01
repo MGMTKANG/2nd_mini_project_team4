@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -166,6 +167,82 @@ class MatchModifyIntegrationTest {
     }
 
     @Test
+    @DisplayName("시작 후 탈퇴로 빈자리가 생긴 CLOSED 매치를 정원 변경 없이 미래로 옮기면 재참가할 수 있다")
+    void reschedulingClosedMatchAfterLateLeaveReopensWithoutCapacityChange() {
+        Long matchId = createMatch(2, 2);
+        MatchEntity full = matchRepository.findById(matchId).orElseThrow();
+        LocalDateTime startedAt = LocalDateTime.now(ZoneId.of("Asia/Seoul")).minusHours(1).withNano(0);
+        matchService.modifyMatch(matchId, users.get(1L), rescheduling(full, startedAt));
+
+        matchService.leaveMatch(matchId, users.get(2L));
+        assertState(matchId, 1, 2, MatchStatus.CLOSED);
+
+        MatchEntity before = matchRepository.findById(matchId).orElseThrow();
+        LocalDateTime futureStart = LocalDateTime.now(ZoneId.of("Asia/Seoul")).plusDays(2).withNano(0);
+        MatchDetailResponseDto response = matchService.modifyMatch(
+                matchId, users.get(1L), rescheduling(before, futureStart));
+
+        assertThat(response.getStatus()).isEqualTo(MatchStatus.RECRUITING);
+        assertThat(response.getMaxParticipant()).isEqualTo(2);
+        assertThat(response.getCurrentParticipantCount()).isEqualTo(1);
+        assertThat(response.getStartAt()).isEqualTo(futureStart);
+        assertState(matchId, 1, 2, MatchStatus.RECRUITING);
+        assertThat(matchRepository.findById(matchId).orElseThrow().getStartAt()).isEqualTo(futureStart);
+
+        MatchParticipantResponseDto rejoined = matchService.joinMatch(matchId, users.get(2L));
+
+        assertThat(rejoined.getUserId()).isEqualTo(users.get(2L));
+        assertThat(matchParticipantRepository.existsByMatch_IdAndUserId(matchId, users.get(2L))).isTrue();
+        assertState(matchId, 2, 2, MatchStatus.CLOSED);
+    }
+
+    @Test
+    @DisplayName("만석 매치의 시작 시각만 미래로 바꾸면 정원과 CLOSED를 유지한다")
+    void reschedulingFullMatchWithoutCapacityChangeKeepsClosed() {
+        Long matchId = createMatch(2, 2);
+        MatchEntity before = matchRepository.findById(matchId).orElseThrow();
+        LocalDateTime futureStart = LocalDateTime.now(ZoneId.of("Asia/Seoul")).plusDays(2).withNano(0);
+
+        MatchDetailResponseDto response = matchService.modifyMatch(
+                matchId, users.get(1L), rescheduling(before, futureStart));
+
+        assertThat(response.getStatus()).isEqualTo(MatchStatus.CLOSED);
+        assertThat(response.getMaxParticipant()).isEqualTo(2);
+        assertThat(response.getCurrentParticipantCount()).isEqualTo(2);
+        assertThat(response.getStartAt()).isEqualTo(futureStart);
+        assertState(matchId, 2, 2, MatchStatus.CLOSED);
+        assertThat(matchRepository.findById(matchId).orElseThrow().getStartAt()).isEqualTo(futureStart);
+    }
+
+    @Test
+    @DisplayName("시작 후 빈자리가 생긴 CLOSED 매치의 제목만 바꾸면 모집을 재개하지 않는다")
+    void editingStartedClosedMatchWithoutCapacityChangeKeepsClosed() {
+        Long matchId = createMatch(2, 2);
+        MatchEntity full = matchRepository.findById(matchId).orElseThrow();
+        LocalDateTime startedAt = LocalDateTime.now(ZoneId.of("Asia/Seoul")).minusHours(1).withNano(0);
+        matchService.modifyMatch(matchId, users.get(1L), rescheduling(full, startedAt));
+
+        matchService.leaveMatch(matchId, users.get(2L));
+        assertState(matchId, 1, 2, MatchStatus.CLOSED);
+
+        MatchEntity before = matchRepository.findById(matchId).orElseThrow();
+        MatchModifyRequestDto request = MatchModifyRequestDto.builder()
+                .title("시작 후 제목 수정").description(before.getDescription())
+                .startAt(before.getStartAt()).endAt(before.getEndAt()).maxParticipant(before.getMaxParticipant())
+                .skillLevel(before.getSkillLevel()).genderGroup(before.getGenderGroup()).build();
+
+        MatchDetailResponseDto response = matchService.modifyMatch(matchId, users.get(1L), request);
+
+        assertThat(response.getStatus()).isEqualTo(MatchStatus.CLOSED);
+        assertThat(response.getTitle()).isEqualTo("시작 후 제목 수정");
+        assertThat(response.getCurrentParticipantCount()).isEqualTo(1);
+        assertState(matchId, 1, 2, MatchStatus.CLOSED);
+        MatchEntity after = matchRepository.findById(matchId).orElseThrow();
+        assertThat(after.getTitle()).isEqualTo("시작 후 제목 수정");
+        assertThat(after).usingRecursiveComparison().ignoringFields("title", "updatedAt").isEqualTo(before);
+    }
+
+    @Test
     @DisplayName("마지막 자리 참가와 정원 축소가 동시에 실행돼도 정원과 상태가 일치한다")
     void concurrentJoinAndCapacityReductionPreserveCapacityAndStatus() throws Exception {
         Long matchId = createMatch(3, 2);
@@ -240,6 +317,13 @@ class MatchModifyIntegrationTest {
         return MatchModifyRequestDto.builder().title("수정 제목").description("수정 설명")
                 .startAt(startAt).endAt(startAt.plusHours(3)).maxParticipant(capacity)
                 .skillLevel(SkillLevel.ADVANCED).genderGroup(GenderGroup.FEMALE).build();
+    }
+
+    private MatchModifyRequestDto rescheduling(MatchEntity match, LocalDateTime startAt) {
+        return MatchModifyRequestDto.builder()
+                .title(match.getTitle()).description(match.getDescription())
+                .startAt(startAt).endAt(startAt.plusHours(2)).maxParticipant(match.getMaxParticipant())
+                .skillLevel(match.getSkillLevel()).genderGroup(match.getGenderGroup()).build();
     }
 
     private void assertState(Long matchId, long count, int capacity, MatchStatus status) {
