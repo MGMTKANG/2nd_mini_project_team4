@@ -15,13 +15,18 @@ import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import com.example.sporty.features.commons.filter.JwtAuthenticationFilter;
+import com.example.sporty.features.commons.handler.AuthenticationErrorResponseWriter;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Configuration
 @RequiredArgsConstructor
+@Slf4j
 public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final ObjectMapper objectMapper;
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
@@ -47,7 +52,10 @@ public class SecurityConfig {
             .cors(Customizer.withDefaults())
             .csrf(csrf -> csrf.disable())
             .exceptionHandling(exceptions -> exceptions.authenticationEntryPoint(
-                (request, response, exception) -> response.setStatus(401)))
+                (request, response, exception) -> {
+                    log.debug("Authentication failed: {}", exception.getClass().getSimpleName());
+                    AuthenticationErrorResponseWriter.writeUnauthorized(response, objectMapper);
+                }))
             .authorizeHttpRequests(auth ->
                 auth
                 .requestMatchers(PublicEndpoints.MATCHER).permitAll()

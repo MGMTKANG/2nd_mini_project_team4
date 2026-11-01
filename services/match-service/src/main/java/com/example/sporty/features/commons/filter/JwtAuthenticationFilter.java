@@ -12,6 +12,8 @@ import org.springframework.security.web.authentication.WebAuthenticationDetailsS
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import com.example.sporty.features.commons.config.PublicEndpoints;
+import com.example.sporty.features.commons.handler.AuthenticationErrorResponseWriter;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
@@ -21,9 +23,15 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Component
+@RequiredArgsConstructor
+@Slf4j
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
+    private final ObjectMapper objectMapper;
+
     @Value("${jwt.secret}")
     private String secret;
     private Key key;
@@ -81,9 +89,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             SecurityContextHolder.getContext().setAuthentication(authentication);
         } catch (JwtException | IllegalArgumentException exception) {
             SecurityContextHolder.clearContext();
+            log.debug("JWT authentication failed: {}", exception.getClass().getSimpleName());
             // 공개 상세 조회는 유효하지 않은 토큰을 비로그인 요청으로 처리한다.
             if (!PublicEndpoints.MATCH_DETAIL.matches(request)) {
-                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                AuthenticationErrorResponseWriter.writeUnauthorized(response, objectMapper);
                 return;
             }
         }

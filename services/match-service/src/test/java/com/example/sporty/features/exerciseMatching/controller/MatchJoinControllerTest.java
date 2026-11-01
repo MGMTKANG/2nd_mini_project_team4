@@ -18,6 +18,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -38,6 +39,7 @@ import org.mockito.MockedStatic;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -206,9 +208,14 @@ class MatchJoinControllerTest {
     @Test
     @DisplayName("[EM06-007] 비로그인 요청은 DB 접근 전에 401로 차단한다")
     void anonymousRequestIsRejected() throws Exception {
-        mvc.perform(post("/api/matches/201/participants")).andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/matches/201/participants"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(content().encoding(StandardCharsets.UTF_8))
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
+                .andExpect(jsonPath("$.message").value("인증에 실패했습니다."));
 
-        verifyNoInteractions(matchRepository, matchParticipantRepository, userClient);
+        verifyNoInteractions(matchRepository, matchParticipantRepository, userGuard, userClient, facilityClient);
     }
 
     @Test
@@ -219,10 +226,14 @@ class MatchJoinControllerTest {
                 .signWith(Keys.hmacShaKeyFor(SECRET.getBytes(StandardCharsets.UTF_8))).compact();
         for (String token : List.of("broken", expired, jwtProvider.createRefreshToken(2L))) {
             mvc.perform(post("/api/matches/201/participants").header("Authorization", "Bearer " + token))
-                    .andExpect(status().isUnauthorized());
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                    .andExpect(content().encoding(StandardCharsets.UTF_8))
+                    .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
+                    .andExpect(jsonPath("$.message").value("인증에 실패했습니다."));
         }
 
-        verifyNoInteractions(matchRepository, matchParticipantRepository, userClient);
+        verifyNoInteractions(matchRepository, matchParticipantRepository, userGuard, userClient, facilityClient);
     }
 
     @ParameterizedTest
