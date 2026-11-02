@@ -6,6 +6,7 @@ import org.springframework.ai.retry.NonTransientAiException;
 import org.springframework.ai.retry.TransientAiException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -30,6 +31,16 @@ public class GlobalExceptionHandler {
                 .body(ErrorResponse.builder()
                         .code("INVALID_INPUT")
                         .message(message)
+                        .build());
+    }
+
+    // 요청 본문을 읽을 수 없음(JSON 형식 오류, 글자 인코딩 오류 등) → 400
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleUnreadableBody(HttpMessageNotReadableException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.builder()
+                        .code("INVALID_INPUT")
+                        .message("요청 형식이 올바르지 않습니다.")
                         .build());
     }
 

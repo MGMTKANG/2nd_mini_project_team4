@@ -35,7 +35,6 @@ public class MatchDraftAiAgent {
     }
 
     public AiDraftResponseDto draft(String prompt) {
-        System.out.println("debug >>>> match draft ai agent draft : " + prompt);
 
         String systemPrompt = """
                 당신은 운동 매칭 서비스의 매치 개설 도우미입니다.
@@ -68,8 +67,6 @@ public class MatchDraftAiAgent {
             // AI가 enum에 없는 값(예: SQUASH)을 넘기면 도구 인자 변환 단계에서 실패한다.
             throw new AiDraftException(SupportedSports.unsupportedMessage());
         }
-
-        System.out.println("debug >>>> match draft ai agent result : " + result);
 
         AiDraftDto draft = toDraft(result);
         if (draft == null || hasNoMatchInfo(draft)) {
@@ -111,13 +108,12 @@ public class MatchDraftAiAgent {
         }
     }
 
-    // tool은 호출됐지만 매치 정보가 하나도 없는 경우 (제목·설명은 AI가 항상 쓰므로 제외)
+    // tool은 호출됐지만 매치 정보가 하나도 없는 경우 (제목·설명은 AI가 항상 쓰고, 실력만으로는 초안을 만들 수 없으므로 제외)
     private boolean hasNoMatchInfo(AiDraftDto draft) {
         return draft.getSportType() == null
                 && draft.getRegion() == null
                 && draft.getStartAt() == null
-                && draft.getMaxParticipant() == null
-                && draft.getSkillLevel() == null;
+                && draft.getMaxParticipant() == null;
     }
 
     private static String cut(String text, int max) {

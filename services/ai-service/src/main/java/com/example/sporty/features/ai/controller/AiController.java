@@ -24,7 +24,6 @@ public class AiController {
     // DB에 저장하지 않고 매치 개설 폼에 채울 초안만 반환한다.
     @PostMapping("/matches")
     public ResponseEntity<?> draftMatch(@Valid @RequestBody AiRequestDto request) {
-        System.out.println("debug >>>> ai controller draftMatch : " + request);
         return ResponseEntity
                 .status(HttpStatus.OK)
                 .body(matchDraftAiAgent.draft(request.getPrompt()));

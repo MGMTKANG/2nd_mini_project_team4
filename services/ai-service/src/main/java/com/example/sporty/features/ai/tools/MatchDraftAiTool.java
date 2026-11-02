@@ -34,7 +34,6 @@ public class MatchDraftAiTool {
                 .title(title).description(description)
                 .build();
 
-        System.out.println("debug >>>> ai tool draftMatch draft : " + draft);
         return draft;
     }
 }
