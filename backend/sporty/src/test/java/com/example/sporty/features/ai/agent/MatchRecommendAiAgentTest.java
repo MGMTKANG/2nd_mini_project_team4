@@ -12,6 +12,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -96,6 +97,7 @@ class MatchRecommendAiAgentTest {
     }
 
     @Test
+    @Tag("external-ai")
     @EnabledIfEnvironmentVariable(named = "OPEN_AI_KEY", matches = ".+")
     @DisplayName("[TC-AI03-01] AI가 회원 정보로 추천 매치 3개를 고르고, 종목과 자치구가 모두 맞는 매치를 먼저 추천한다")
     void recommendsThreeMatchesWithAi() {
