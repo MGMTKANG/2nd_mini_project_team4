@@ -28,7 +28,7 @@ public class UserController {
 
     private final UserService userService;
 
-    @Operation(summary = "회원가입", description = "신규 회원을 등록하고 프로필과 포인트 지갑을 초기화합니다.")
+    @Operation(summary = "회원가입", description = "신규 회원을 등록하고 프로필과 선호 종목을 저장합니다.")
     @PostMapping
     public ResponseEntity<UserResponseDto> signUp(@Valid @RequestBody UserSignUpRequestDto request) {
         return ResponseEntity.status(HttpStatus.CREATED).body(userService.signUp(request));
@@ -40,7 +40,7 @@ public class UserController {
         return ResponseEntity.ok(userService.getUserInfo(userId));
     }
 
-    @Operation(summary = "회원 탈퇴", description = "회원 상태를 WITHDRAWN으로 변경하고 탈퇴 이벤트를 발행합니다.")
+    @Operation(summary = "회원 탈퇴", description = "회원 상태를 WITHDRAWN으로 변경하고 리프레시 토큰을 삭제합니다.")
     @DeleteMapping("/me")
     public ResponseEntity<Void> withdraw(@AuthenticationPrincipal Long userId) {
         userService.withdraw(userId);
