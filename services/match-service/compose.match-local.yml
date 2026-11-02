@@ -1,0 +1,53 @@
+# 매치 단독 로컬 확인용 Compose이며, 저장소 전체 서비스용 Compose가 아니다.
+name: sporty-match-local
+
+services:
+  mariadb:
+    image: mariadb:11.4.8
+    environment:
+      MARIADB_DATABASE: match_db
+      MARIADB_USER: ${MATCH_DB_USERNAME:-match}
+      MARIADB_PASSWORD: ${MATCH_DB_PASSWORD:?Create .env from .env.example and set MATCH_DB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?Create .env from .env.example and set MARIADB_ROOT_PASSWORD}
+    volumes:
+      - match-db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  match-service:
+    image: sporty-match-service:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    environment:
+      MATCH_DB_URL: jdbc:mariadb://mariadb:3306/match_db
+      MATCH_DB_USERNAME: ${MATCH_DB_USERNAME:-match}
+      MATCH_DB_PASSWORD: ${MATCH_DB_PASSWORD:?Create .env from .env.example and set MATCH_DB_PASSWORD}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Create .env from .env.example and set JWT_SECRET_KEY}
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
+      EUREKA_ENABLED: ${EUREKA_ENABLED:-false}
+      EUREKA_URL: ${EUREKA_URL:-http://localhost:8761/eureka/}
+      CONFIG_ENABLED: ${CONFIG_ENABLED:-false}
+      CONFIG_SERVER_URL: ${CONFIG_SERVER_URL:-http://localhost:8888}
+      MATCH_KAFKA_ENABLED: ${MATCH_KAFKA_ENABLED:-false}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}
+      USER_WITHDRAWN_TOPIC: ${USER_WITHDRAWN_TOPIC:-user.withdrawn}
+      MATCH_JPA_DDL_AUTO: ${MATCH_JPA_DDL_AUTO:-update}
+      # 콜론 없는 기본값 문법으로 이름 기반 호출에 필요한 명시적 빈 값을 보존한다.
+      USER_SERVICE_URL: ${USER_SERVICE_URL-http://localhost:8081}
+      FACILITY_SERVICE_URL: ${FACILITY_SERVICE_URL-http://localhost:8083}
+      JAVA_OPTS: ${JAVA_OPTS:-}
+    ports:
+      - "127.0.0.1:8082:8082"
+    mem_limit: 512m
+    stop_grace_period: 30s
+
+volumes:
+  match-db-data:
