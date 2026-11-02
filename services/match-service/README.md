@@ -85,7 +85,7 @@ Gradle 의존성과 MariaDB·Testcontainers 보조 이미지가 모두 준비된
 
 Compose도 `.env`의 `MATCH_KAFKA_ENABLED`(기본 `false`), `KAFKA_BOOTSTRAP_SERVERS`, `USER_WITHDRAWN_TOPIC`을 매치 컨테이너에 전달한다. 브로커 주소는 컨테이너에서 접근 가능한 값으로 설정한다. 새 그룹처럼 저장된 오프셋이 없으면 운영 설정 `spring.kafka.consumer.auto-offset-reset=earliest`로 토픽에 남아 있는 가장 오래된 이벤트부터 처리한다. 이미 확정된 오프셋은 그대로 사용하며, 브로커 보존기간이 지나 삭제된 이벤트는 이 설정으로 복구할 수 없다.
 
-유저 서비스 담당자가 준비할 계약(공통 규약 5절 초안 기준):
+유저 서비스가 맞출 회원 탈퇴 이벤트 계약:
 
 - 인프라 담당자와 수신 토픽 `user.withdrawn`을 미리 준비한다. 이름 변경 시 `USER_WITHDRAWN_TOPIC`도 맞춘다.
 - 메시지 key는 `userId`의 문자열(`aggregateId`)이다. 같은 회원의 이벤트는 같은 파티션으로 보낸다.
@@ -153,7 +153,7 @@ H2 테스트는 테스트 전용 `schema.sql`로 MariaDB 호환 모드를 사용
 
 SQL은 모두 `CREATE TABLE IF NOT EXISTS`·`ENGINE=InnoDB`이며 데이터 삭제나 기존 테이블 변경을 하지 않는다. `IF NOT EXISTS`는 기존 잘못된 컬럼·제약·PK 순서를 고치지 않는다. 기존 DB의 스키마 불일치는 별도로 검증해야 하며, 데이터 변환이나 자동 ALTER는 제공하지 않는다. Hibernate `validate`만으로 UNIQUE·CHECK·PK 순서 전체를 검증할 수 없어 통합 테스트에서 메타데이터와 실제 제약 거절도 확인한다.
 
-전체 SQL은 현재 구현 범위다. `match.status`는 ERD의 `VARCHAR(20)`·`RECRUITING/CONFIRMED/CANCELLING/CANCELLED`와 달리 엔티티의 `VARCHAR(10)`·`RECRUITING/CLOSED`를 따른다. ERD의 `target_participants`, `target_points`, `entry_points`, `funding_deadline_at`, `version`과 참가자의 `status`, `contribution_points`, `saga_id`, `version`은 아직 미구현이다. Saga·outbox 테이블도 포함하지 않는다. 미구현 NOT NULL 컬럼을 추가하면 현재 INSERT가 실패할 수 있으므로 ERD 초안을 그대로 실행하지 않는다. ID 자동 증가와 `ck_match_valid_fields`는 코드에서 구체화한 제약이며, DB 최소 정원은 1이고 API 최소 정원은 2다.
+전체 SQL은 현재 구현 범위다. `match.status`는 ERD의 `VARCHAR(20)`·`RECRUITING/CONFIRMED/CANCELLING/CANCELLED`와 달리 엔티티의 `VARCHAR(10)`·`RECRUITING/CLOSED`를 따른다. ERD의 `target_participants`, `target_points`, `entry_points`, `funding_deadline_at`, `version`과 참가자의 `status`, `contribution_points`, `saga_id`, `version`은 아직 미구현이다. Saga·outbox 테이블도 포함하지 않는다. 미구현 NOT NULL 컬럼을 추가하면 현재 INSERT가 실패할 수 있으므로 ERD에서 내보낸 SQL을 그대로 실행하지 않는다. ID 자동 증가와 `ck_match_valid_fields`는 코드에서 구체화한 제약이며, DB 최소 정원은 1이고 API 최소 정원은 2다.
 
 ## 원본에서 바꾼 것
 
@@ -228,17 +228,17 @@ Docker 수동 확인(PR #5·#6 시점, Apple Silicon): 이미지 빌드, 비루�
 
 옮기지 않은 테스트: 원본 `MatchIntegrationTest`(원본에서도 MariaDB가 필요해 기본 실행에서 빠지던 테스트). 실제 MariaDB 확인은 새 `MatchMariaDBIntegrationTest`로 한다.
 
-## 임의로 정한 것 (팀 확인 필요)
+## 서비스 구성 기준
 
 1. 폴더 구조: `services/<서비스명>` 아래 서비스별 독립 Gradle 프로젝트
 2. 패키지 구조: 원본과 같게 유지(`com.example.sporty.features.exerciseMatching`) — 원본과 비교하기 쉽게
-3. 포트 8082, 유저 서비스 8081, 체육시설 서비스 8083 가정
-4. 인증: Gateway 방식이 정해지기 전까지 매치 서비스도 Access Token을 직접 검증(원본 JWT 검증 방식 유지, 인증 실패는 공통 JSON 응답). Gateway가 사용자 ID 헤더를 넘기기로 정하면 필터만 바꾸면 된다.
-5. 아래 내부 API 경로와 응답 형식
+3. 포트: 매치 8082, 유저 8081, 체육시설 8083
+4. 인증: 매치 서비스가 Access Token을 직접 검증한다(원본 JWT 검증 방식 유지, 인증 실패는 공통 JSON 응답). Gateway에서 사용자 ID 헤더를 넘기는 방식으로 바꾸면 필터만 교체한다.
+5. 서비스 간 내부 API: 아래 경로와 응답 형식
 
-## 다른 서비스에 필요한 내부 API (제안안)
+## 다른 서비스가 제공하는 내부 API
 
-경로·형식은 매치 서비스 쪽 제안이며, 각 담당자와 확정해야 한다.
+유저·체육시설 서비스는 아래 경로와 응답 형식으로 내부 API를 제공한다.
 
 **유저 서비스**
 
@@ -259,13 +259,13 @@ Docker 수동 확인(PR #5·#6 시점, Apple Silicon): 이미지 빌드, 비루�
 - **회원 탈퇴 연동:** `UserWithdrawn` 구독·처리 이력·무제한 재시도 경계를 추가했다(기본 비활성). 유저 서비스 발행·토픽 준비 후 실제 연동 확인이 필요하다.
 - **AI 서비스 연동:** 원본 AI는 `MatchService.searchMatches`와 참가 여부 조회를 직접 썼다. AI 서비스가 `GET /api/matches`를 쓰고, 추천의 "이미 참가한 매치 제외"는 별도 조건이 필요하다.
 - **생성·참가의 원격 호출 위치 — 반영:** 원격 회원·시설 확인을 로컬 행 잠금 앞으로 옮겼다. 원격 조회 중 탈퇴가 커밋되어도 쓰기 직전 로컬 guard가 오래된 ACTIVE를 거절한다. 동시 오류의 응답 우선순위는 위 표와 같으며, 수정 응답의 원격 조회는 여전히 매치 잠금 안에 남아 있다.
-- **다른 서비스 장애 시 처리:** 매치 서비스는 `503 / EXTERNAL_SERVICE_UNAVAILABLE` 매핑과 운영 Feign 연결 1000ms·응답 3000ms 적용을 완료했다. 팀 공통 규약은 아직 합의 전이며, Circuit Breaker·Fallback(선택 요구사항 5번)도 검토한다.
+- **다른 서비스 장애 시 처리:** 매치 서비스는 `503 / EXTERNAL_SERVICE_UNAVAILABLE` 매핑과 운영 Feign 연결 1000ms·응답 3000ms 적용을 완료했다. Circuit Breaker·Fallback(선택 요구사항 5번)은 추가 검토한다.
 - **수정·참가·삭제 경합 테스트 — 완료:** `MatchLockContentionIntegrationTest`에서 A의 실제 행 잠금 획득 후 B의 조회 반환·서비스 완료가 400ms 동안 대기하고, A 커밋 후 일관된 결과가 저장되는지 단언한다(테스트 H2 `LOCK_TIMEOUT=10000`).
 - **회원 탈퇴 정리의 최신 조회 — 완료:** 엔티티 대신 매치 ID만 오름차순으로 조회한 뒤 잠금 후 읽은 매치·참가 정보로 정리하며, OWNER 삭제·본인만 참가 취소·마감 재개·시작 후 마감 유지와 ID 조회 사이에 커밋된 정원 수정 보존 테스트를 추가했다. 호출 경계의 영속성 컨텍스트 공유는 Kafka 처리 경계의 새 트랜잭션으로 해결했고, ID 수집 후 커밋된 참가자·정원 변경 반영은 실제 MariaDB로 확인했다.
 - **수정 응답 장애 테스트 — 완료:** 실제 Feign의 시설 시간 초과·JSON 오류·연결 거부에서도 수정 200·DB 반영·시설 필드 null을 단언하고, 프로필 정상/시설 500은 시설 요청 기록까지 확인한다. 시간 초과·JSON 오류·연결 거부의 실제 원인 예외(`SocketTimeoutException`, `DecodeException`, `ConnectException`)도 단언한다.
 - **Eureka·Config 실제 연동 및 Gateway:** 클라이언트 연결 준비는 추가했으며 기본값은 비활성이다. 공통 설정 담당(이우진)의 서버가 준비되면 위 환경 변수로 활성화하고 실제 등록·설정 수신을 검증한다. Gateway 연동은 별도 후속 작업이다.
 - **전체 Compose 연동:** 매치 Dockerfile·매치 단독 로컬 Compose는 추가했다. 전체 서비스 Compose 통합은 인프라 담당과 진행한다.
-- **ERD 초안의 포인트·SAGA 컬럼과 새 상태값:** 팀 규칙 확정 후 3단계에서 반영.
+- **포인트 Saga:** ERD의 포인트·Saga 컬럼과 새 상태값은 Saga 규칙을 정한 뒤 반영한다.
 
 ## 탈퇴 연동 전 반드시 해결 — 두 항목 해결
 
