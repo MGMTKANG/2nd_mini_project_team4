@@ -130,6 +130,7 @@ PUBLIC_DATA_API_URL=your_public_data_api_base_url
 - OpenAI 키가 없어도 어떤 기능까지 실행 가능한지는 검증되지 않았습니다. 설정값이 누락되면 애플리케이션 시작이 실패할 수 있습니다.
 - 실제 비밀값이 포함된 `.env`는 **Git에 커밋하지 않습니다.**
 - `application-dev.yml`은 백엔드 실행 디렉터리의 `.env`를 읽도록 구성되어 있습니다.
+- 로컬 PC에서 직접 실행할 때는 `.env.example`에 Docker용 주소가 있더라도 DB 호스트와 `SPRING_DATA_REDIS_HOST`를 `localhost`로 설정하세요.
 
 ## 6. 백엔드 실행
 
@@ -146,6 +147,55 @@ cd backend/sporty
 - 최초 실행에는 Gradle 의존성 다운로드가 필요할 수 있습니다.
 
 > `backend/`가 아니라 **`backend/sporty/`**에서 실행해야 합니다.
+
+### Docker 이미지 생성 및 실행
+
+현재 Dockerfile은 빌드된 JAR를 복사하므로, **Docker 이미지 생성 전에 실행용 JAR를 빌드해야 합니다.** 아래 명령은 저장소 루트에서 시작합니다.
+
+Windows PowerShell:
+
+```powershell
+cd backend/sporty
+.\gradlew.bat clean bootJar
+docker build -t sporty-backend:local .
+```
+
+Windows Git Bash / macOS / Linux:
+
+```bash
+cd backend/sporty
+bash ./gradlew clean bootJar
+docker build -t sporty-backend:local .
+```
+
+`bootJar`는 실행용 JAR를 생성하며 테스트 실행은 포함하지 않습니다.
+
+Windows MariaDB와 PC에 6379 포트가 공개된 Redis에 연결하여 Docker Desktop에서 백엔드를 실행하려면, `backend/sporty`에서 `.env`를 `.env.docker`로 복사합니다. 기존 파일이 있다면 덮어쓰지 말고 수정하세요.
+
+```bash
+cp .env .env.docker
+```
+
+`.env.docker`에서 다음 값을 설정합니다. DB 이름·포트·계정은 실제 로컬 환경에 맞추고, 나머지 필수 환경변수도 유지합니다.
+
+```dotenv
+DB_URL=jdbc:mariadb://host.docker.internal:3306/sporty
+SPRING_DATA_REDIS_HOST=host.docker.internal
+SPRING_DATA_REDIS_PORT=6379
+```
+
+- `host.docker.internal`은 Docker Desktop 컨테이너에서 호스트 PC에 접속하는 주소입니다.
+- 같은 Docker 네트워크의 Redis는 해당 컨테이너/서비스 이름을, 클라우드 DB·Redis는 실제 접속 주소를 사용합니다.
+- 실제 비밀값이 포함된 `.env.docker`는 Git에 커밋하지 않습니다.
+
+같은 디렉터리에서 실행합니다. 기존 로컬 백엔드가 8000 포트를 사용 중이면 먼저 종료하세요.
+
+```bash
+docker run -d --name sporty-backend-local -p 8000:8000 --env-file .env.docker -e SPRING_PROFILES_ACTIVE=dev sporty-backend:local
+docker logs --tail 100 sporty-backend-local
+```
+
+`Started SportyApplication` 로그를 확인한 뒤 http://localhost:8000/swagger-ui/index.html 에 접속합니다. `-p 8000:8000`은 PC의 8000 포트를 컨테이너의 8000 포트에 연결합니다.
 
 ## 7. 프론트엔드 실행
 
@@ -167,6 +217,7 @@ REACT_APP_BACKEND_ENDPOINT=http://localhost:8000
 - `frontend/package-lock.json`이 있으므로 `npm ci`를 우선 권장합니다.
 - `'react-scripts'은(는) ... 아닙니다` 오류가 발생하면 `frontend/`에서 `npm ci`가 정상 완료되었는지 확인하세요.
 - 환경변수를 변경했다면 프론트엔드 개발 서버를 다시 시작해야 합니다.
+- 로컬 백엔드 컨테이너의 8000 포트를 PC에 공개한 경우에도 위 주소를 사용합니다. 클라우드 배포용 빌드에서는 외부에서 접근 가능한 HTTPS 백엔드/API Gateway 주소로 변경하고 다시 빌드하세요.
 
 ## 8. 시연용 데이터와 주의사항
 
