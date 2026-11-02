@@ -1,0 +1,86 @@
+server:
+    port: 8081
+    shutdown: graceful
+
+spring:
+    application:
+        name: user-service
+    profiles:
+        default: local
+    config:
+        import:
+        - "optional:file:./.env[.properties]"
+        - "optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}"
+
+    lifecycle:
+        timeout-per-shutdown-phase: 20s
+
+    datasource:
+        driver-class-name: org.mariadb.jdbc.Driver
+        url: ${USER_DB_URL:jdbc:mariadb://localhost:3306/user_db}
+        username: ${USER_DB_USERNAME:root}
+        password: ${USER_DB_PASSWORD:admin}
+
+    jpa:
+        hibernate:
+            ddl-auto: ${USER_JPA_DDL_AUTO:update}
+        properties:
+            hibernate:
+                "[format_sql]": true
+                dialect: org.hibernate.dialect.MariaDBDialect
+
+    data:
+        redis:
+            host: ${REDIS_HOST:localhost}
+            port: ${REDIS_PORT:6379}
+            password: ${REDIS_PASSWORD:}
+            timeout: 6000ms
+
+    kafka:
+        bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+        producer:
+            key-serializer: org.apache.kafka.common.serialization.StringSerializer
+            value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+    cloud:
+        config:
+            enabled: ${CONFIG_ENABLED:false}
+            request-connect-timeout: ${CONFIG_CONNECT_TIMEOUT_MS:2000}
+            request-read-timeout: ${CONFIG_READ_TIMEOUT_MS:5000}
+
+eureka:
+    client:
+        enabled: ${EUREKA_ENABLED:false}
+        service-url:
+            defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+    instance:
+        prefer-ip-address: true
+
+management:
+    endpoints:
+        web:
+            exposure:
+                include: health,info
+
+jwt:
+    secret: ${JWT_SECRET_KEY:aq/FkI5pCjW8jezz9NYQ7bxP4U7PcJakEB0+3Q5Ttb8=}
+
+user:
+    events:
+        user-withdrawn-topic: ${USER_WITHDRAWN_TOPIC:user.withdrawn}
+
+---
+spring:
+    config:
+        activate:
+            on-profile: local
+    jpa:
+        show-sql: true
+
+---
+spring:
+    config:
+        activate:
+            on-profile: dev | prod
+    jpa:
+        show-sql: false
