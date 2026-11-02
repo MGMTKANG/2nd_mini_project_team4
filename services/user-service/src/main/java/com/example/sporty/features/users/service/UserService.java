@@ -58,6 +58,7 @@ public class UserService {
 
         if (request.getSportTypes() != null && !request.getSportTypes().isEmpty()) {
             List<SportPreferenceEntity> preferences = request.getSportTypes().stream()
+                    .distinct()
                     .map(sportType -> SportPreferenceEntity.builder()
                             .profileId(savedProfile.getId())
                             .sportType(sportType)

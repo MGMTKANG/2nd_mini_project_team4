@@ -1,5 +1,6 @@
 package com.example.sporty.features.profiles.service;
 
+import java.util.Collections;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
@@ -49,8 +50,13 @@ public class ProfileService {
         profile.update(request.getNickname(), request.getDistrict(), profile.getImageUrl());
 
         sportPreferenceRepository.deleteByProfileId(profile.getId());
-        if (request.getSportTypes() != null && !request.getSportTypes().isEmpty()) {
-            List<SportPreferenceEntity> newSports = request.getSportTypes().stream()
+
+        List<SportType> distinctSportTypes = (request.getSportTypes() != null)
+                ? request.getSportTypes().stream().distinct().toList()
+                : Collections.emptyList();
+
+        if (!distinctSportTypes.isEmpty()) {
+            List<SportPreferenceEntity> newSports = distinctSportTypes.stream()
                     .map(sport -> SportPreferenceEntity.builder()
                             .profileId(profile.getId())
                             .sportType(sport)
@@ -59,6 +65,6 @@ public class ProfileService {
             sportPreferenceRepository.saveAll(newSports);
         }
 
-        return ProfileUpdateResponseDto.fromEntity(profile, request.getSportTypes());
+        return ProfileUpdateResponseDto.fromEntity(profile, distinctSportTypes);
     }
 }
