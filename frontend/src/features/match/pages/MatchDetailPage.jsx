@@ -253,6 +253,9 @@ function MatchDetailContent({ match, preview, onRefresh }) {
   const maximum = Number.isInteger(match.maxParticipant) && match.maxParticipant > 0 ? match.maxParticipant : null;
   const remaining = current !== null && maximum !== null ? Math.max(0, maximum - current) : null;
   const progress = current !== null && maximum !== null ? Math.min(100, Math.max(0, current / maximum * 100)) : 0;
+  const hasFunding = maximum !== null && Number.isFinite(match.targetPoints) && match.targetPoints > 0;
+  const entryPoints = hasFunding ? Math.ceil(match.targetPoints / maximum) : null;
+  const fundedPoints = hasFunding && current !== null ? entryPoints * current : null;
   const status = { RECRUITING: '모집 중', CLOSED: '모집 마감' }[match.status] || '상태 정보 없음';
   const schedule = `${dateLabel(match.startAt)} ${timeLabel(match.startAt)} — ${match.startAt?.slice(0, 10) !== match.endAt?.slice(0, 10) ? `${dateLabel(match.endAt)} ` : ''}${timeLabel(match.endAt)}`;
   let actionLabel = '참가 신청하기';
@@ -313,6 +316,7 @@ function MatchDetailContent({ match, preview, onRefresh }) {
             <span className="detail-eyebrow">함께 뛰는 즐거움</span><h2>함께할 메이트를 만나요</h2>
             <div className="detail-capacity"><span>모집 인원 현황</span><strong>{current ?? '—'}<small> / {maximum ?? '—'}명</small></strong></div>
             {current !== null && maximum !== null && <progress style={{ '--capacity-color': progress < 25 ? '#2563eb' : progress <= 75 ? '#16a34a' : '#dc2626' }} value={progress} max="100" aria-label="모집 인원 비율" />}
+            {hasFunding && <p className="detail-funding">₩{fundedPoints.toLocaleString()} / ₩{match.targetPoints.toLocaleString()} 모금 · 1인당 ₩{entryPoints.toLocaleString()}</p>}
             <p className="detail-recruitment-note">{match.status === 'CLOSED' ? '모집이 마감된 매치입니다.' : remaining === null ? '모집 인원을 확인할 수 없습니다.' : remaining === 0 ? '모집 정원이 찼습니다.' : `${remaining}명이 더 함께할 수 있어요.`}</p>
             <button type="button" className={`detail-primary-button ${match.isOwner || match.isParticipant ? 'is-danger' : 'is-join'}`} disabled={preview || pending !== null || (match.isOwner !== true && match.isParticipant !== true && (match.status !== 'RECRUITING' || remaining === 0))} onClick={match.isOwner === true ? () => performAction('delete') : match.isParticipant === true ? handleLeave : () => performAction('join')}>{pending === 'join' ? '참가 신청 중…' : actionLabel}</button>
             {match.isOwner === true && !preview && pending === null && <Link className="match-edit-link" to={`/matches/${match.matchId}/edit`}>매치 수정하기</Link>}
