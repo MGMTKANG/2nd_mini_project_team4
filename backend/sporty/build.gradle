@@ -84,5 +84,16 @@ tasks.register('externalAiTest', Test) {
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath
     useJUnitPlatform { includeTags 'external-ai' }
+
+    // Live API checks must execute again on every explicit invocation.
+    outputs.upToDateWhen { false }
+    outputs.doNotCacheIf('External AI responses depend on a live service') { true }
+
+    doFirst {
+        def apiKey = System.getenv('OPEN_AI_KEY')
+        if (apiKey == null || apiKey.trim().isEmpty()) {
+            throw new GradleException('externalAiTest requires a non-empty OPEN_AI_KEY environment variable.')
+        }
+    }
     shouldRunAfter tasks.named('test')
 }
