@@ -9,11 +9,12 @@ import org.springframework.http.HttpMethod;
 public final class PublicEndpoints {
     private PublicEndpoints() {}
 
-    // 체육시설 조회는 비로그인으로 공개한다 (원본 모놀리스와 동일).
+    // /internal/** 는 서비스 간 인증 방식 확정 전까지 임시로 공개해둔다.
     public static final RequestMatcher MATCHER = new OrRequestMatcher(
             PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, "/api/services"),
             PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, "/api/services/{serviceId}"),
-            // devops가 K8s probe 등으로 쓸 헬스체크 경로 (match-service와 동일 컨벤션).
+            PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, "/internal/facility-services"),
+            PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, "/internal/facility-services/ids"),
             PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, "/actuator/health"),
             PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, "/actuator/health/liveness"),
             PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, "/actuator/health/readiness"),
