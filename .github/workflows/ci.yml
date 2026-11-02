@@ -57,6 +57,8 @@ jobs:
       PUBLIC_DATA_API_URL: http://127.0.0.1:9999
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -85,6 +87,8 @@ jobs:
       CI: 'true'
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -93,3 +97,34 @@ jobs:
       - run: npm ci
       - run: npm test -- --watchAll=false --runInBand
       - run: npm run build
+  match:
+    name: Match service build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TZ: Asia/Seoul
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Build and test match service
+        run: >
+          bash backend/sporty/gradlew
+          -p services/match-service
+          clean build --no-daemon
+
+      - name: Upload match service test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: match-service-test-reports
+          path: |
+            services/match-service/build/reports/tests/
+            services/match-service/build/test-results/
+          if-no-files-found: ignore
