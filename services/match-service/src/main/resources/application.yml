@@ -1,0 +1,110 @@
+server:
+    port: 8082
+    shutdown: graceful
+
+spring:
+    application:
+        name: match-service
+    profiles:
+        default: local
+    config:
+        import:
+        - "optional:file:./.env[.properties]"
+        - "optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}"
+
+    lifecycle:
+        timeout-per-shutdown-phase: 20s
+
+    kafka:
+        bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+        admin:
+            auto-create: false
+        consumer:
+            group-id: match-service
+            auto-offset-reset: earliest
+            enable-auto-commit: false
+            key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+            value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+            properties:
+                "[allow.auto.create.topics]": false
+        listener:
+            auto-startup: ${MATCH_KAFKA_ENABLED:false}
+            ack-mode: record
+
+    cloud:
+        loadbalancer:
+            retry:
+                # 잠금 안 원격 호출 시간을 예측 가능하게 유지하도록 자동 재시도를 끈다.
+                enabled: false
+        config:
+            enabled: ${CONFIG_ENABLED:false}
+            request-connect-timeout: ${CONFIG_CONNECT_TIMEOUT_MS:2000}
+            request-read-timeout: ${CONFIG_READ_TIMEOUT_MS:5000}
+        openfeign:
+            client:
+                config:
+                    default:
+                        connect-timeout: 1000
+                        read-timeout: 3000
+
+    datasource:
+        driver-class-name: org.mariadb.jdbc.Driver
+        url: ${MATCH_DB_URL:jdbc:mariadb://localhost:3306/match_db}
+        username: ${MATCH_DB_USERNAME:match}
+        password: ${MATCH_DB_PASSWORD:}
+
+    jpa:
+        hibernate:
+            ddl-auto: ${MATCH_JPA_DDL_AUTO:update}
+        properties:
+            hibernate:
+                "[format_sql]": true
+                dialect: org.hibernate.dialect.MariaDBDialect
+
+eureka:
+    client:
+        enabled: ${EUREKA_ENABLED:false}
+        service-url:
+            defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+    instance:
+        prefer-ip-address: true
+
+management:
+    endpoints:
+        web:
+            exposure:
+                include: health,info
+
+jwt:
+    secret: ${JWT_SECRET_KEY}
+
+match:
+    events:
+        user-withdrawn-topic: ${USER_WITHDRAWN_TOPIC:user.withdrawn}
+    kafka:
+        retry:
+            initial-interval-ms: 1000
+            max-interval-ms: 30000
+
+# 유저·체육시설 서비스 주소. Eureka 연동 후에는 url을 비우고 서비스 이름으로 찾는다.
+clients:
+    user-service:
+        url: ${USER_SERVICE_URL:http://localhost:8081}
+    facility-service:
+        url: ${FACILITY_SERVICE_URL:http://localhost:8083}
+
+---
+spring:
+    config:
+        activate:
+            on-profile: local
+    jpa:
+        show-sql: true
+
+---
+spring:
+    config:
+        activate:
+            on-profile: dev | prod
+    jpa:
+        show-sql: false

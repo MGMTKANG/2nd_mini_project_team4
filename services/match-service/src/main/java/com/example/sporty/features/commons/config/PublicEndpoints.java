@@ -1,0 +1,30 @@
+package com.example.sporty.features.commons.config;
+
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+import org.springframework.security.web.util.matcher.OrRequestMatcher;
+import org.springframework.security.web.util.matcher.AndRequestMatcher;
+import org.springframework.security.web.util.matcher.NegatedRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
+import org.springframework.http.HttpMethod;
+
+/** Shared by authorization and JWT filtering so public routes cannot drift apart. */
+public final class PublicEndpoints {
+    private PublicEndpoints() {}
+
+    // 상세 조회는 공개하되 유효한 토큰이 있으면 조회 사용자를 식별한다.
+    public static final RequestMatcher MATCH_DETAIL =
+            new AndRequestMatcher(
+                    PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, "/api/matches/{matchId}"),
+                    // 내 목록은 로그인 필수이며 공개 상세 조회에 포함하지 않는다.
+                    new NegatedRequestMatcher(PathPatternRequestMatcher.withDefaults()
+                            .matcher(HttpMethod.GET, "/api/matches/me")));
+
+    public static final RequestMatcher MATCHER = new OrRequestMatcher(
+            PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, "/api/matches"),
+            MATCH_DETAIL,
+            PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, "/actuator/health"),
+            // health probes를 활성화했을 때 K8s가 인증 없이 확인할 수 있는 경로만 허용한다.
+            PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, "/actuator/health/liveness"),
+            PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, "/actuator/health/readiness"),
+            PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, "/actuator/info"));
+}

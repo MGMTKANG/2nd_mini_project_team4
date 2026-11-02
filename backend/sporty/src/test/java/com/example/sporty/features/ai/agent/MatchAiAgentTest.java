@@ -10,6 +10,7 @@ import java.time.temporal.TemporalAdjusters;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.springframework.ai.chat.client.ChatClient;
@@ -30,6 +31,7 @@ import com.example.sporty.features.exerciseMatching.domain.enums.SkillLevel;
 - AI-02 자연어 -> 검색 조건 추출 테스트
 - 실제 OpenAI를 호출하므로 OPEN_AI_KEY 환경변수가 없으면 스킵
 */
+@Tag("external-ai")
 @EnabledIfEnvironmentVariable(named = "OPEN_AI_KEY", matches = ".+")
 class MatchAiAgentTest {
     
