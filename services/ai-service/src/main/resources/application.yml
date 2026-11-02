@@ -11,6 +11,13 @@ spring:
     cloud:
         config:
             enabled: ${CONFIG_ENABLED:false}
+        openfeign:
+            client:
+                config:
+                    default:
+                        # 공통 규약: 연결 1초, 응답 3초
+                        connect-timeout: 1000
+                        read-timeout: 3000
     ai:
         openai:
             api-key: ${OPEN_AI_KEY}
@@ -31,3 +38,8 @@ management:
         web:
             exposure:
                 include: health,info
+
+# 매치 서비스 주소. Eureka 연동 후에는 url을 비우고 서비스 이름으로 찾는다.
+clients:
+    match-service:
+        url: ${MATCH_SERVICE_URL:http://localhost:8082}
