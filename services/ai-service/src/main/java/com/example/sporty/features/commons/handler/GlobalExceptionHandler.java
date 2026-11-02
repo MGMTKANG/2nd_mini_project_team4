@@ -11,8 +11,10 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.client.ResourceAccessException;
 
 import com.example.sporty.features.commons.exception.ai.AiDraftException;
+import com.example.sporty.features.commons.handler.ErrorResponse;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -54,8 +56,8 @@ public class GlobalExceptionHandler {
                         .build());
     }
 
-    // OpenAI 호출 실패(키 오류, OpenAI 장애 등) → 503
-    @ExceptionHandler({ NonTransientAiException.class, TransientAiException.class })
+    // OpenAI 호출 실패(키 오류, OpenAI 장애, 네트워크 연결 실패 등) → 503
+    @ExceptionHandler({ NonTransientAiException.class, TransientAiException.class, ResourceAccessException.class })
     public ResponseEntity<ErrorResponse> handleAiUnavailable(RuntimeException e) {
         log.warn("OpenAI 호출 실패", e);
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
