@@ -93,3 +93,32 @@ jobs:
       - run: npm ci
       - run: npm test -- --watchAll=false --runInBand
       - run: npm run build
+  match:
+    name: Match service build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TZ: Asia/Seoul
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Build and test match service
+        run: >
+          bash backend/sporty/gradlew
+          -p services/match-service
+          clean build --no-daemon
+
+      - name: Upload match service test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: match-service-test-reports
+          path: |
+            services/match-service/build/reports/tests/
+            services/match-service/build/test-results/
+          if-no-files-found: ignore
