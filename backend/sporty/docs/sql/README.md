@@ -52,3 +52,16 @@ fixtures. Identity counters may advance during tests even though records roll ba
 
 The existing dev profile still uses create-drop; use a validate/no-DDL profile when keeping
 catalog data across application restarts. These integration tests explicitly use validate.
+
+## Match crowdfunding points
+
+`003_match_target_points.sql` adds the nullable `target_points` column (facility reservation
+cost / crowdfunding goal) to `match` and widens `ck_match_valid_fields` to require it be either
+NULL or a positive integer. No preflight query is needed: the column does not exist yet, so no
+existing row can violate the new check. `scripts/ApplyTargetPointsMigration.java` refuses to run
+if the column is already present (this is a one-time migration, not an idempotent startup hook).
+Run it without arguments for preflight, then with `--apply` once to install the migration.
+
+Without this migration, any environment running with `ddl-auto=validate` against the real
+`sporty` schema (including `MatchIntegrationTest`, tagged `integration`) fails to start, since
+the JPA mapping now declares a column the table does not have.

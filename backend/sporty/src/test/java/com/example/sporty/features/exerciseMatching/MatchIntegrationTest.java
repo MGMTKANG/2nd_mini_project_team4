@@ -207,6 +207,25 @@ class MatchIntegrationTest {
                 .containsExactlyInAnyOrder(GenderGroup.values());
     }
 
+    @Test
+    void targetPointsAcceptsNullAndPositiveButRejectsZeroOrNegative() {
+        MatchEntity withPoints = em.persist(MatchEntity.builder().title("크라우드펀딩")
+                .service(em.getEntityManager().getReference(ServiceEntity.class, serviceId))
+                .startAt(START).endAt(START.plusHours(2)).maxParticipant(10)
+                .skillLevel(SkillLevel.BEGINNER).sportType(SportType.FUTSAL)
+                .genderGroup(GenderGroup.MIXED).targetPoints(50000L).build());
+        MatchEntity withoutPoints = match(UUID.randomUUID().toString(), "펀딩 없음", serviceId, START, 10, SkillLevel.BEGINNER);
+        reload();
+
+        assertThat(service.getMatchDetail(withPoints.getId(), null).getTargetPoints()).isEqualTo(50000L);
+        assertThat(service.getMatchDetail(withoutPoints.getId(), null).getTargetPoints()).isNull();
+
+        for (String assignment : List.of("target_points=0", "target_points=-1")) {
+            assertThatThrownBy(() -> jdbc.update("UPDATE `match` SET " + assignment + " WHERE id=?", withPoints.getId()))
+                    .as(assignment).isInstanceOf(DataIntegrityViolationException.class);
+        }
+    }
+
     private UserEntity user() {
         return em.persist(UserEntity.builder().email(UUID.randomUUID() + "@test.invalid")
                 .password("integration-test-only").gender(Gender.MALE).build());

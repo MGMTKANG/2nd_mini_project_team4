@@ -234,6 +234,69 @@ class MatchDetailControllerTest {
                         .user(UserEntity.builder().id(2L).build()).build()));
     }
 
+    @Test
+    @DisplayName("상세 응답은 크라우드펀딩 목표 금액(targetPoints)을 포함한다")
+    void detailIncludesTargetPointsWhenSet() throws Exception {
+        when(matchRepository.findById(101L)).thenReturn(Optional.of(MatchEntity.builder()
+                .id(101L).title("크라우드펀딩 매치").maxParticipant(10)
+                .sportType(SportType.FUTSAL).genderGroup(GenderGroup.MIXED)
+                .service(FacilityFixtures.service(7L, true)).targetPoints(50000L).build()));
+        when(matchParticipantRepository.findAllByMatch_IdOrderByIdAsc(101L)).thenReturn(List.of());
+
+        mvc.perform(get("/api/matches/101"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.targetPoints").value(50000));
+    }
+
+    @Test
+    @DisplayName("생성 요청의 targetPoints를 그대로 저장하고, 생략하면 null로 저장한다")
+    void creationPassesTargetPointsToPersistenceOrNullWhenOmitted() throws Exception {
+        when(userRepository.findById(1L)).thenReturn(Optional.of(UserEntity.builder().id(1L).build()));
+        when(serviceRepository.findById(7L)).thenReturn(Optional.of(FacilityFixtures.service(7L, true)));
+        when(matchRepository.save(any(MatchEntity.class))).thenAnswer(invocation ->
+                MatchEntity.builder().id(101L).targetPoints(invocation.<MatchEntity>getArgument(0).getTargetPoints()).build());
+
+        mvc.perform(post("/api/matches")
+                .header("Authorization", "Bearer " + new JwtProvider(SECRET).createAccessToken(1L))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createRequest(", \"genderGroup\": \"MIXED\", \"targetPoints\": 50000")))
+                .andExpect(status().isCreated());
+        verify(matchRepository).save(argThat(match -> Long.valueOf(50000L).equals(match.getTargetPoints())));
+
+        mvc.perform(post("/api/matches")
+                .header("Authorization", "Bearer " + new JwtProvider(SECRET).createAccessToken(1L))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createRequest(", \"genderGroup\": \"MIXED\"")))
+                .andExpect(status().isCreated());
+        verify(matchRepository).save(argThat(match -> match.getTargetPoints() == null));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "-1"})
+    @DisplayName("targetPoints가 0 이하이면 생성을 거부한다")
+    void creationRejectsNonPositiveTargetPoints(String value) throws Exception {
+        mvc.perform(post("/api/matches")
+                .header("Authorization", "Bearer " + new JwtProvider(SECRET).createAccessToken(1L))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(createRequest(", \"genderGroup\": \"MIXED\", \"targetPoints\": " + value)))
+                .andExpect(status().isBadRequest());
+        verifyNoInteractions(matchRepository, matchParticipantRepository, userRepository, serviceRepository);
+    }
+
+    @Test
+    @DisplayName("목록 조회 응답은 targetPoints를 포함한다")
+    void searchReturnsTargetPointsWhenSet() throws Exception {
+        when(matchRepository.searchMatches(
+                null, null, null, null, null, null, null, null, null,
+                null, null, null))
+                .thenReturn(List.of(MatchEntity.builder().id(101L).targetPoints(30000L)
+                        .service(FacilityFixtures.service(7L, true)).build()));
+
+        mvc.perform(get("/api/matches"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].targetPoints").value(30000));
+    }
+
     @ParameterizedTest
     @EnumSource(GenderGroup.class)
     void creationPassesGenderGroupToPersistence(GenderGroup genderGroup) throws Exception {
