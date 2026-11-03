@@ -1,0 +1,55 @@
+server:
+  port: ${SERVER_PORT:8000}
+  shutdown: graceful
+
+spring:
+  application:
+    name: api-gateway
+  config:
+    import: "optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}"
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+  cloud:
+    config:
+      enabled: ${CONFIG_ENABLED:false}
+    gateway:
+      server:
+        webflux:
+          discovery:
+            locator:
+              enabled: false
+          # 외부 공개 경로(/api/**)만 라우팅. /internal/** 은 의도적으로 라우팅하지 않음.
+          # URI 기본값: 로컬 실행 / K8s: http://<service>:<port> / Eureka: lb://<service>
+          routes:
+            - id: user-service
+              uri: ${USER_SERVICE_URL:http://localhost:8081}
+              predicates:
+                - Path=/api/auth/**,/api/users/**,/api/profiles/**
+            - id: match-service
+              uri: ${MATCH_SERVICE_URL:http://localhost:8082}
+              predicates:
+                - Path=/api/matches/**
+            - id: facility-service
+              uri: ${FACILITY_SERVICE_URL:http://localhost:8083}
+              predicates:
+                - Path=/api/services/**
+            - id: ai-service
+              uri: ${AI_SERVICE_URL:http://localhost:8084}
+              predicates:
+                - Path=/api/ai/**
+
+eureka:
+  client:
+    enabled: ${EUREKA_ENABLED:false}
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+  instance:
+    prefer-ip-address: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
