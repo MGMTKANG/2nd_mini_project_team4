@@ -1,0 +1,78 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: match-service
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: match-service
+  template:
+    metadata:
+      labels:
+        app: match-service
+    spec:
+      terminationGracePeriodSeconds: 40
+      containers:
+        - name: match-service
+          image: 088153173875.dkr.ecr.ap-northeast-2.amazonaws.com/team4/match-service:sha-475c1867c7ac0273b1f1e2c1e92df3fe83cd35f7-41545470277-2
+          ports:
+            - name: http
+              containerPort: 8082
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: dev
+            - name: TZ
+              value: Asia/Seoul
+            - name: MATCH_DB_URL
+              value: jdbc:mariadb://172.31.38.169:3307/match_db
+            - name: MATCH_DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: match-service-secret
+                  key: MATCH_DB_USERNAME
+            - name: MATCH_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: match-service-secret
+                  key: MATCH_DB_PASSWORD
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: match-service-secret
+                  key: JWT_SECRET_KEY
+            - name: MATCH_JPA_DDL_AUTO
+              value: validate
+            - name: CONFIG_ENABLED
+              value: "false"
+            - name: EUREKA_ENABLED
+              value: "false"
+            - name: MATCH_KAFKA_ENABLED
+              value: "false"
+            - name: USER_SERVICE_URL
+              value: http://user-service:8081
+            - name: FACILITY_SERVICE_URL
+              value: http://facility-service:8083
+            - name: MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED
+              value: "true"
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
