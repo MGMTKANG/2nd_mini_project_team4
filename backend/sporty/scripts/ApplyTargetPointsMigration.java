@@ -7,7 +7,9 @@ class ApplyTargetPointsMigration {
     public static void main(String[] args) throws Exception {
         Class.forName("org.mariadb.jdbc.Driver");
         Properties config = new Properties();
-        try (var reader = Files.newBufferedReader(Path.of(".env"))) { config.load(reader); }
+        if (Files.exists(Path.of(".env"))) {
+            try (var reader = Files.newBufferedReader(Path.of(".env"))) { config.load(reader); }
+        }
         String url = System.getenv().getOrDefault("DB_URL", config.getProperty("DB_URL"));
         String username = System.getenv().getOrDefault("DB_USERNAME", config.getProperty("DB_USERNAME"));
         String password = System.getenv().getOrDefault("DB_PASSWORD", config.getProperty("DB_PASSWORD"));

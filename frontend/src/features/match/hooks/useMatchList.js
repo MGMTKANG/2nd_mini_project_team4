@@ -6,7 +6,7 @@ import { districts, sports } from '../../auth/data/signUpOptions';
 
 const EMPTY_FILTERS = { sportType: '', status: '', region: '', isFree: '', preferredOnly: false };
 
-export default function useMatchList() {
+export default function useMatchList(preview = false) {
   const [profile, setProfile] = useState(null);
   const [profileStatus, setProfileStatus] = useState(() => localStorage.getItem('at') ? 'loading' : 'idle');
   const navigate = useNavigate();
@@ -32,7 +32,7 @@ export default function useMatchList() {
   appliedRef.current = applied;
 
   useEffect(() => {
-    if (!localStorage.getItem('at')) return;
+    if (preview || !localStorage.getItem('at')) return;
     const request = new AbortController();
     setProfileStatus('loading');
     loadMyPage({ signal: request.signal }).then(({ profile: member }) => {
@@ -50,9 +50,10 @@ export default function useMatchList() {
       setProfileStatus(error.response?.status === 401 ? 'unauthorized' : 'error');
     });
     return () => request.abort();
-  }, []);
+  }, [preview]);
 
   const loadList = useCallback(async conditions => {
+    if (preview) return;
     listRequest.current?.abort();
     const request = new AbortController();
     listRequest.current = request;
@@ -65,9 +66,10 @@ export default function useMatchList() {
       if (request.signal.aborted) return;
       setListError(matchRequestError(error)); setStatus('error');
     }
-  }, []);
+  }, [preview]);
 
   const loadRecommendations = useCallback(async () => {
+    if (preview) return;
     recommendationRequest.current?.abort();
     if (!localStorage.getItem('at')) {
       setRecommendations([]); setRecommendationStatus('idle');

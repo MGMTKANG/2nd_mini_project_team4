@@ -11,7 +11,7 @@ const SPORTS = [['', '전체 매치'], ['FUTSAL', '⚽ 풋살'], ['TENNIS', '�
 
 // 실제 라우트는 조회/이벤트 훅을 사용하고, 표시 컴포넌트는 독립적으로 테스트한다.
 export default function MatchListPage({ preview = false }) {
-  const model = useMatchList();
+  const model = useMatchList(preview);
   return <MatchListView {...model} preview={preview} />;
 }
 
