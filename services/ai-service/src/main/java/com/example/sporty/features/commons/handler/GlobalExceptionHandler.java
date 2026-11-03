@@ -13,7 +13,9 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.client.RestClientException;
 
+import com.example.sporty.features.commons.exception.ExternalServiceUnavailableException;
 import com.example.sporty.features.commons.exception.ai.AiDraftException;
+import com.example.sporty.features.commons.exception.ai.AiSearchException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -45,12 +47,33 @@ public class GlobalExceptionHandler {
                         .build());
     }
 
+    // AI가 문장에서 검색 조건을 찾지 못함 → 400
+    @ExceptionHandler(AiSearchException.class)
+    public ResponseEntity<ErrorResponse> handleAiSearch(AiSearchException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.builder()
+                        .code("AI_SEARCH_FAILED")
+                        .message(e.getMessage())
+                        .build());
+    }
+
     // AI가 문장에서 매치 정보를 찾지 못함 → 400
     @ExceptionHandler(AiDraftException.class)
     public ResponseEntity<ErrorResponse> handleAiDraft(AiDraftException e) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.builder()
                         .code("AI_DRAFT_FAILED")
+                        .message(e.getMessage())
+                        .build());
+    }
+
+    // 다른 서비스(match-service 등)가 응답하지 않음 → 503 (match-service와 같은 코드)
+    @ExceptionHandler(ExternalServiceUnavailableException.class)
+    public ResponseEntity<ErrorResponse> handleExternalServiceUnavailable(ExternalServiceUnavailableException e) {
+        log.warn("외부 서비스 호출 실패: service={}", e.getServiceName(), e);
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ErrorResponse.builder()
+                        .code("EXTERNAL_SERVICE_UNAVAILABLE")
                         .message(e.getMessage())
                         .build());
     }

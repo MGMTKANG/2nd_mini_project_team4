@@ -4,10 +4,17 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import com.example.sporty.features.ai.tools.MatchAiTool;
 import com.example.sporty.features.ai.tools.MatchDraftAiTool;
 
 @Configuration
 public class AiAgentConfig {
+
+    // 메서드명이 Bean 이름 - MatchAiAgent의 @Qualifier 값과 같아야 함
+    @Bean
+    public ChatClient matchChatClient(ChatClient.Builder builder, MatchAiTool matchAITool) {
+        return builder.defaultTools(matchAITool).build();
+    }
 
     // 메서드명이 Bean 이름 - MatchDraftAiAgent의 @Qualifier 값과 같아야 함
     @Bean
