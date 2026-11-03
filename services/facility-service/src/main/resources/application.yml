@@ -1,0 +1,80 @@
+server:
+    port: 8083
+    shutdown: graceful
+
+spring:
+    application:
+        name: facility-service
+    profiles:
+        default: local
+    config:
+        import:
+        - "optional:file:./.env[.properties]"
+        - "optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}"
+
+    lifecycle:
+        timeout-per-shutdown-phase: 20s
+
+    cloud:
+        config:
+            enabled: ${CONFIG_ENABLED:false}
+            request-connect-timeout: ${CONFIG_CONNECT_TIMEOUT_MS:2000}
+            request-read-timeout: ${CONFIG_READ_TIMEOUT_MS:5000}
+
+    datasource:
+        driver-class-name: org.mariadb.jdbc.Driver
+        url: ${FACILITY_DB_URL:jdbc:mariadb://localhost:3306/facility_db}
+        username: ${FACILITY_DB_USERNAME:facility}
+        password: ${FACILITY_DB_PASSWORD:}
+
+    jpa:
+        hibernate:
+            ddl-auto: ${FACILITY_JPA_DDL_AUTO:update}
+        properties:
+            hibernate:
+                "[format_sql]": true
+                dialect: org.hibernate.dialect.MariaDBDialect
+
+eureka:
+    client:
+        enabled: ${EUREKA_ENABLED:false}
+        service-url:
+            defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+    instance:
+        prefer-ip-address: true
+
+management:
+    endpoints:
+        web:
+            exposure:
+                include: health,info
+
+jwt:
+    secret: ${JWT_SECRET_KEY}
+
+# 서울시 공공서비스예약 체육시설 Open API 연동 (원본 모놀리스와 동일 설정)
+facility:
+    openapi:
+        service-key: ${PUBLIC_DATA_API_KEY}
+        base-url: ${PUBLIC_DATA_API_URL}
+        service-name: ListPublicReservationSport
+        data-type: json
+    sync:
+        cron: "0 0 3 * * *"
+        zone: "Asia/Seoul"
+
+---
+spring:
+    config:
+        activate:
+            on-profile: local
+    jpa:
+        show-sql: true
+
+---
+spring:
+    config:
+        activate:
+            on-profile: dev | prod
+    jpa:
+        show-sql: false
