@@ -2,9 +2,9 @@
 
 프론트엔드 요청의 단일 진입점입니다. 외부 공개 경로(`/api/**`)만 각 서비스로 라우팅합니다.
 
-| 항목 | 값 |
-  |---|---|
-| 포트 | `8000` (`SERVER_PORT`로 변경 가능) |
+| 항목 | 값                                     |
+  |---|---------------------------------------|
+| 포트 | `8000` (`SERVER_PORT`로 변경 가능. 변경 시 아래 URL/명령의 포트도 함께 변경)       |
 | Health | http://localhost:8000/actuator/health |
 
 ## 라우팅
@@ -33,12 +33,21 @@
   ```bash
   cd services/api-gateway
 
-  # 기본: 각 서비스에 직접 연결
+  # 기본: 각 서비스에 직접 연결 (localhost:808x)
   ./gradlew bootRun
 
-  # Eureka + Config 사용
+  # Eureka 등록 + Config 사용 (라우팅은 여전히 localhost:808x로 직접 연결)
   EUREKA_ENABLED=true CONFIG_ENABLED=true ./gradlew bootRun
+
+  # Eureka로 라우팅 (대상 서비스들도 EUREKA_ENABLED=true로 등록되어 있어야 함)
+  EUREKA_ENABLED=true \
+  USER_SERVICE_URL=lb://user-service \
+  MATCH_SERVICE_URL=lb://match-service \
+  FACILITY_SERVICE_URL=lb://facility-service \
+  AI_SERVICE_URL=lb://ai-service \
+  ./gradlew bootRun
   ```
+> `EUREKA_ENABLED`는 Eureka 등록/조회만 관여. 라우팅 방식은 `*_SERVICE_URL` 값(`http://...` 또는 `lb://...`)으로 결정.
 
 ## 인프라 전체 로컬 실행 순서
 

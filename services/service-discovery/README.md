@@ -2,11 +2,11 @@
 
 서비스 인스턴스 등록/조회를 담당하는 Eureka 서버입니다. 자기 자신은 등록하지 않습니다.
 
-| 항목 | 값 |
-  |---|---|
-| 포트 | `8761` (`SERVER_PORT`로 변경 가능) |
-| 대시보드 | http://localhost:8761 |
-| Health | http://localhost:8761/actuator/health |
+| 항목 | 값                                                        |
+  |---|----------------------------------------------------------|
+| 포트 | `8761` (`SERVER_PORT`로 변경 가능. 변경 시 아래 URL/명령의 포트도 함께 변경) |
+| 대시보드 | http://localhost:8761                                    |
+| Health | http://localhost:8761/actuator/health                    |
 
 ## 실행
 
