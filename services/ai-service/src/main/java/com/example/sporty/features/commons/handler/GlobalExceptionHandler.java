@@ -15,6 +15,7 @@ import org.springframework.web.client.RestClientException;
 
 import com.example.sporty.features.commons.exception.ExternalServiceUnavailableException;
 import com.example.sporty.features.commons.exception.ai.AiDraftException;
+import com.example.sporty.features.commons.exception.ai.AiRecommendException;
 import com.example.sporty.features.commons.exception.ai.AiSearchException;
 import com.example.sporty.features.commons.exception.users.UserNotFoundException;
 
@@ -64,6 +65,16 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.builder()
                         .code("AI_DRAFT_FAILED")
+                        .message(e.getMessage())
+                        .build());
+    }
+    
+    // AI가 후보 중에서 추천 매치를 고르지 못함 → 500 (1차와 같은 상태 코드)
+    @ExceptionHandler(AiRecommendException.class)
+    public ResponseEntity<ErrorResponse> handleAiRecommend(AiRecommendException e) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ErrorResponse.builder()
+                        .code("AI_RECOMMEND_FAILED")
                         .message(e.getMessage())
                         .build());
     }
