@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.example.sporty.features.ai.agent.MatchAiAgent;
 import com.example.sporty.features.ai.agent.MatchDraftAiAgent;
 import com.example.sporty.features.ai.domain.dto.AiRequestDto;
 
@@ -18,7 +19,17 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class AiController {
 
+    private final MatchAiAgent matchAIAgent;
     private final MatchDraftAiAgent matchDraftAiAgent;
+
+    // AI-02  body : { "prompt" : "이번 주말 강남에서 풋살 초보 매치 찾아줘" }
+    // AI가 조건을 추출하고 match-service에 검색을 요청한다.
+    @PostMapping("/matches/search")
+    public ResponseEntity<?> searchMatches(@Valid @RequestBody AiRequestDto request) {
+        return ResponseEntity
+                .status(HttpStatus.OK)
+                .body(matchAIAgent.search(request.getPrompt()));
+    }
 
     // AI-01  body : { "prompt" : "토요일 저녁 7시 송파에서 농구 10명 모집" }
     // DB에 저장하지 않고 매치 개설 폼에 채울 초안만 반환한다.

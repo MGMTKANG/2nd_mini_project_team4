@@ -90,7 +90,7 @@ public class MatchService {
         List<Long> matchIds = participants.stream().map(participant -> participant.getMatch().getId()).toList();
         Map<Long, Long> countsByMatchId = matchRepository.countByMatchIds(matchIds).stream()
                 .collect(Collectors.toMap(row -> row.getMatchId(), row -> row.getParticipantCount()));
-        Map<Long, FacilityServiceSummary> facilitiesById = findFacilities(participants.stream()
+        Map<String, FacilityServiceSummary> facilitiesById = findFacilities(participants.stream()
                 .map(participant -> participant.getMatch().getServiceId()).toList());
 
         // 4. 생성자/일반 참가자 역할을 포함한 목록 반환
@@ -292,7 +292,7 @@ public class MatchService {
         }
 
         // Validate the catalog before creating either match or participant records.
-        facilityClient.findService(req.getServiceId())
+        FacilityServiceSummary facility = facilityClient.findServiceById(req.getServiceId())
             .orElseThrow(ServiceNotFoundException::new);
 
         // 원격 조회 중 탈퇴가 커밋됐을 수 있으므로 저장 전에 로컬 상태를 잠가 확인한다.
@@ -308,7 +308,7 @@ public class MatchService {
 
         // 3. create MatchEntity and save
         MatchEntity savedMatchEntity =
-            matchRepository.save(req.toEntity());
+            matchRepository.save(req.toEntity(facility.serviceId()));
 
 
         // 4. create MatchParticipant entity and save
@@ -378,10 +378,19 @@ public class MatchService {
 
     public List<MatchResponseDto> searchMatches(MatchSearchRequestDto req) {
 
-        // 지역·무료 여부 조건은 체육시설 서비스에 맞는 체육서비스 ID를 먼저 묻는다.
+        String serviceId = null;
+        if (req.getServiceId() != null) {
+            FacilityServiceSummary facility = facilityClient.findServiceById(req.getServiceId()).orElse(null);
+            if (facility == null) {
+                return List.of();
+            }
+            serviceId = facility.serviceId();
+        }
+
+        // 지역·무료 여부 조건은 체육시설 서비스에 맞는 서울시 svcId를 먼저 묻는다.
         boolean filterByFacility = (req.getRegion() != null && !req.getRegion().isEmpty())
             || req.getIsFree() != null;
-        List<Long> facilityServiceIds = List.of(0L);
+        List<String> facilityServiceIds = List.of("");
         if (filterByFacility) {
             facilityServiceIds = facilityClient.searchServiceIds(
                 (req.getRegion() == null || req.getRegion().isEmpty()) ? null : req.getRegion(),
@@ -392,7 +401,7 @@ public class MatchService {
         }
 
         List<MatchEntity> matches = matchRepository.searchMatches(
-            req.getServiceId(),
+            serviceId,
             filterByFacility,
             facilityServiceIds,
             escapeSearchKeyword(req.getTitleKeyword()),
@@ -415,7 +424,7 @@ public class MatchService {
         Map<Long, Long> countsByMatchId =
             matchRepository.countByMatchIds(matchIds).stream()
             .collect(Collectors.toMap(r -> r.getMatchId(), r -> r.getParticipantCount()));
-        Map<Long, FacilityServiceSummary> facilitiesById =
+        Map<String, FacilityServiceSummary> facilitiesById =
             findFacilities(matches.stream().map(MatchEntity::getServiceId).toList());
 
 
@@ -428,7 +437,7 @@ public class MatchService {
 
     }
 
-    private Map<Long, FacilityServiceSummary> findFacilities(Collection<Long> serviceIds) {
+    private Map<String, FacilityServiceSummary> findFacilities(Collection<String> serviceIds) {
         return facilityClient.findServices(serviceIds.stream().distinct().toList()).stream()
                 .collect(Collectors.toMap(FacilityServiceSummary::serviceId, Function.identity(),
                         (first, second) -> first));
@@ -523,8 +532,7 @@ public class MatchService {
                 .skillLevel(match.getSkillLevel())
                 .sportType(match.getSportType())
                 .genderGroup(match.getGenderGroup())
-                .serviceId(match.getServiceId())
-                .targetPoints(match.getTargetPoints())
+                .serviceId(facility == null ? null : facility.id())
                 .participants(participantSummaries)
                 .isOwner(isOwner)
                 .isParticipant(isParticipant)

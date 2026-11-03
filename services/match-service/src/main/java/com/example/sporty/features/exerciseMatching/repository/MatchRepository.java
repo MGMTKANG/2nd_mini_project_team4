@@ -25,7 +25,7 @@ public interface MatchRepository extends JpaRepository<MatchEntity, Long> {
     @Query("select m from MatchEntity m where m.id = :matchId")
     Optional<MatchEntity> findByIdForUpdate(@Param("matchId") Long matchId);
 
-    // 지역·무료 여부는 체육시설 서비스가 고른 serviceIds로 거른다.
+    // 지역·무료 여부는 체육시설 서비스가 고른 svcId 목록으로 거른다.
     // filterByServiceIds가 false이면 serviceIds는 쓰이지 않는 자리 채움 값이다.
     @Query ("""
             SELECT m
@@ -43,9 +43,9 @@ public interface MatchRepository extends JpaRepository<MatchEntity, Long> {
             AND (:status IS NULL OR m.status = :status)
         """)
     List<MatchEntity> searchMatches(
-        @Param ("serviceId") Long serviceId,
+        @Param ("serviceId") String serviceId,
         @Param("filterByServiceIds") boolean filterByServiceIds,
-        @Param("serviceIds") List<Long> serviceIds,
+        @Param("serviceIds") List<String> serviceIds,
         @Param("titleKeyword") String titleKeyword,
         @Param("descriptionKeyword") String descriptionKeyword,
         @Param("startAt") LocalDateTime startAt,

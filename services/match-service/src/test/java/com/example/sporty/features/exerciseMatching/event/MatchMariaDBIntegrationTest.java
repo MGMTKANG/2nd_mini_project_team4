@@ -94,7 +94,7 @@ class MatchMariaDBIntegrationTest extends MariaDBIntegrationTestSupport {
         // 격리를 지정하지 않은 트랜잭션은 컨테이너의 기본 REPEATABLE READ를 사용한다.
         transactions = new TransactionTemplate(transactionManager);
         users = MatchUserFixtures.create(fakeUsers, 4);
-        serviceId = FacilityFixtures.create(fakeFacilities, FacilityFixtures.newServiceId()).serviceId();
+        serviceId = FacilityFixtures.create(fakeFacilities, FacilityFixtures.newServiceId()).id();
     }
 
     @AfterEach

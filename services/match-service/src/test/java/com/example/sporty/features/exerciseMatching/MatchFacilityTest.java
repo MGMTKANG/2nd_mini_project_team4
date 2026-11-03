@@ -21,12 +21,15 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
 
 import com.example.sporty.features.commons.util.SportType;
+import com.example.sporty.features.exerciseMatching.domain.dto.MatchCreateRequestDto;
 import com.example.sporty.features.exerciseMatching.domain.dto.MatchResponseDto;
 import com.example.sporty.features.exerciseMatching.domain.dto.MatchSearchRequestDto;
 import com.example.sporty.features.exerciseMatching.domain.entity.MatchEntity;
 import com.example.sporty.features.exerciseMatching.domain.enums.GenderGroup;
+import com.example.sporty.features.exerciseMatching.domain.enums.SkillLevel;
 import com.example.sporty.features.exerciseMatching.service.MatchService;
 import com.example.sporty.support.FacilityFixtures;
+import com.example.sporty.support.MatchUserFixtures;
 import com.example.sporty.features.exerciseMatching.client.FacilityClient.FacilityServiceSummary;
 
 @DataJpaTest(properties = {
@@ -40,6 +43,43 @@ class MatchFacilityTest {
     @Autowired private EntityManager em;
     @Autowired private MatchService matchService;
     @Autowired private FakeFacilityClient fakeFacilityClient;
+    @Autowired private FakeUserClient fakeUserClient;
+
+    @Test
+    void creationResolvesNumericFacilityIdBeforePersistingSvcId() {
+        Long userId = MatchUserFixtures.create(fakeUserClient, 1).get(1L);
+        var facility = FacilityFixtures.create(fakeFacilityClient, FacilityFixtures.newServiceId());
+        LocalDateTime start = LocalDateTime.now().plusDays(1);
+        Long matchId = matchService.createMatch(userId, MatchCreateRequestDto.builder()
+                .serviceId(facility.id()).title("svcId 저장 검증")
+                .startAt(start).endAt(start.plusHours(1)).maxParticipant(3)
+                .skillLevel(SkillLevel.BEGINNER).sportType(SportType.FUTSAL).genderGroup(GenderGroup.MIXED)
+                .build());
+        em.flush();
+        em.clear();
+
+        assertThat(em.createNativeQuery("SELECT service_id FROM \"match\" WHERE id=:id")
+                .setParameter("id", matchId).getSingleResult()).isEqualTo(facility.serviceId());
+        assertThat(matchService.getMatchDetail(matchId, userId).getServiceId()).isEqualTo(facility.id());
+    }
+
+    @Test
+    void changedNumericFacilityIdKeepsMatchLinkedBySvcId() {
+        var facility = FacilityFixtures.create(fakeFacilityClient, FacilityFixtures.newServiceId());
+        Long matchId = persistMatch(facility).getId();
+        em.flush();
+        em.clear();
+        Long newId = facility.id() + 1;
+        fakeFacilityClient.add(new FacilityServiceSummary(newId, facility.serviceId(), facility.serviceName(),
+                facility.locationName(), facility.region(), facility.isFree(), facility.reservationDeadlineAt()));
+
+        assertThat(matchService.getMatchDetail(matchId, null).getServiceId()).isEqualTo(newId);
+        assertThat(matchService.searchMatches(MatchSearchRequestDto.builder().serviceId(facility.id()).build()))
+                .isEmpty();
+        assertThat(matchService.searchMatches(MatchSearchRequestDto.builder().serviceId(newId).build()))
+                .extracting(MatchResponseDto::getMatchId).containsExactly(matchId);
+        assertThat(em.find(MatchEntity.class, matchId).getServiceId()).isEqualTo(facility.serviceId());
+    }
 
     @Test
     void searchFiltersPersistedBooleansAndLoadsFacilityRelationships() {
@@ -65,6 +105,19 @@ class MatchFacilityTest {
                 .containsExactlyInAnyOrder(freeMatchId, paidMatchId);
         assertThat(matchService.searchMatches(MatchSearchRequestDto.builder()
                 .region("서초구").build())).isEmpty();
+        assertThat(matchService.searchMatches(MatchSearchRequestDto.builder()
+                .serviceId(free.id()).build())).extracting(MatchResponseDto::getMatchId)
+                .containsExactly(freeMatchId);
+        assertThat(matchService.searchMatches(MatchSearchRequestDto.builder()
+                .serviceId(paid.id()).build())).extracting(MatchResponseDto::getMatchId)
+                .containsExactly(paidMatchId);
+        assertThat(matchService.searchMatches(MatchSearchRequestDto.builder()
+                .serviceId(freeServiceId + 2).build())).isEmpty();
+        assertThat(matchService.searchMatches(MatchSearchRequestDto.builder()
+                .serviceId(free.id()).region("강남").isFree(true).build()))
+                .extracting(MatchResponseDto::getMatchId).containsExactly(freeMatchId);
+        assertThat(matchService.searchMatches(MatchSearchRequestDto.builder()
+                .serviceId(free.id()).region("강남").isFree(false).build())).isEmpty();
 
         var detail = matchService.getMatchDetail(freeMatchId, null);
         assertThat(detail.getServiceId()).isEqualTo(freeServiceId);

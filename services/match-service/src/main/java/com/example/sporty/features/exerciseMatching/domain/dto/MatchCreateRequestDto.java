@@ -67,8 +67,8 @@ public class MatchCreateRequestDto {
         return startAt == null || endAt == null || endAt.isAfter(startAt);
     }
 
-    // MatchService validates this catalog ID before persistence.
-    public MatchEntity toEntity() {
+    // MatchService resolves the numeric catalog ID to the Seoul svcId before persistence.
+    public MatchEntity toEntity(String facilityServiceId) {
         return MatchEntity.builder()
             .title(this.getTitle())
             .description(this.getDescription())
@@ -76,7 +76,7 @@ public class MatchCreateRequestDto {
             .endAt(this.getEndAt())
             .maxParticipant(this.getMaxParticipant())
             .skillLevel(this.getSkillLevel())
-            .serviceId(this.getServiceId())
+            .serviceId(facilityServiceId)
             .sportType(this.getSportType())
             .genderGroup(this.getGenderGroup())
             .targetPoints(this.getTargetPoints())

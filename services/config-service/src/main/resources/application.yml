@@ -1,0 +1,45 @@
+server:
+  port: ${SERVER_PORT:8888}
+  shutdown: graceful
+
+spring:
+  application:
+    name: config-service
+  profiles:
+    default: native
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+---
+spring:
+  config:
+    activate:
+      on-profile: native
+  cloud:
+    config:
+      server:
+        native:
+          search-locations: "${CONFIG_NATIVE_SEARCH_LOCATIONS:file:../../config-repo/,file:./config-repo/}"
+
+---
+spring:
+  config:
+    activate:
+      on-profile: git
+  cloud:
+    config:
+      server:
+        git:
+          uri: https://github.com/mingukang8187/2nd_mini_project_team4.git
+          default-label: ${CONFIG_GIT_LABEL:develop}
+          search-paths: config-repo
+          clone-on-start: true

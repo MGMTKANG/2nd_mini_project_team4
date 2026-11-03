@@ -114,7 +114,7 @@ class MatchJoinIntegrationTest {
         MatchDatabaseCleanup.clear(transactionManager, dataSource);
         new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
             users = MatchUserFixtures.create(fakeUserClient, 11);
-            serviceId = FacilityFixtures.create(fakeFacilityClient, FacilityFixtures.newServiceId()).serviceId();
+            serviceId = FacilityFixtures.create(fakeFacilityClient, FacilityFixtures.newServiceId()).id();
         });
     }
 
@@ -561,7 +561,7 @@ class MatchJoinIntegrationTest {
         return new TransactionTemplate(transactionManager).execute(status -> {
             MatchEntity match = matchRepository.save(MatchEntity.builder()
                     .title("참여 테스트").sportType(SportType.FUTSAL).maxParticipant(maxParticipant)
-                    .serviceId(serviceId).genderGroup(GenderGroup.MIXED)
+                    .serviceId("S" + serviceId).genderGroup(GenderGroup.MIXED)
                     .status(matchStatus).startAt(startAt).endAt(startAt.plusHours(2)).build());
             matchParticipantRepository.save(MatchParticipantEntity.builder()
                     .match(match).userId(users.get(1L)).role(MatchParticipantRole.OWNER).build());

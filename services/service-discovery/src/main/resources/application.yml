@@ -1,0 +1,23 @@
+server:
+  port: ${SERVER_PORT:8761}
+  shutdown: graceful
+
+spring:
+  application:
+    name: service-discovery
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
+eureka:
+  client:
+    register-with-eureka: false
+    fetch-registry: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  metrics:
+    tags:
+      application: ${spring.application.name}

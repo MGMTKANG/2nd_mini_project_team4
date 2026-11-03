@@ -84,7 +84,7 @@ class MatchServiceTest {
                 .skillLevel(SkillLevel.INTERMEDIATE)
                 .sportType(SportType.FUTSAL)
                 .genderGroup(GenderGroup.FEMALE)
-                .serviceId(7L)
+                .serviceId("S7")
                 .build();
         when(matchRepository.findById(101L)).thenReturn(Optional.of(match));
         when(matchParticipantRepository.findAllByMatch_IdOrderByIdAsc(101L)).thenReturn(List.of(
@@ -94,7 +94,7 @@ class MatchServiceTest {
         when(userClient.findProfiles(List.of(1L, 2L))).thenReturn(List.of(
                 profile(2L, 402L, "참가자", null),
                 profile(1L, 401L, "생성자", "https://example.com/owner.png")));
-        when(facilityClient.findService(7L)).thenReturn(Optional.of(FacilityFixtures.service(7L, true)));
+        when(facilityClient.findService("S7")).thenReturn(Optional.of(FacilityFixtures.service(7L, true)));
 
         MatchDetailResponseDto response = matchService.getMatchDetail(101L, null);
 
@@ -132,7 +132,7 @@ class MatchServiceTest {
     @Test
     @DisplayName("[추가 검증] 참가 정보가 없으면 현재 인원은 0이며 생성자 수를 임의로 더하지 않는다")
     void getMatchDetailReturnsZeroWhenNoParticipantsAreStored() {
-        MatchEntity match = MatchEntity.builder().id(101L).serviceId(7L).build();
+        MatchEntity match = MatchEntity.builder().id(101L).serviceId("S7").build();
         when(matchRepository.findById(101L)).thenReturn(Optional.of(match));
         when(matchParticipantRepository.findAllByMatch_IdOrderByIdAsc(101L)).thenReturn(List.of());
 
@@ -161,7 +161,7 @@ class MatchServiceTest {
     @CsvSource({"1,true,true", "2,false,true", "3,false,false"})
     @DisplayName("조회 사용자의 해당 매치 참가 역할로 생성자와 참여 여부를 구분한다")
     void getMatchDetailReturnsCurrentUserState(Long userId, boolean owner, boolean joined) {
-        when(matchRepository.findById(101L)).thenReturn(Optional.of(MatchEntity.builder().id(101L).serviceId(7L).build()));
+        when(matchRepository.findById(101L)).thenReturn(Optional.of(MatchEntity.builder().id(101L).serviceId("S7").build()));
         when(matchParticipantRepository.findAllByMatch_IdOrderByIdAsc(101L)).thenReturn(List.of(
                 participant(1L, MatchParticipantRole.OWNER),
                 participant(2L, MatchParticipantRole.PARTICIPANT)));
@@ -176,7 +176,7 @@ class MatchServiceTest {
     @Test
     @DisplayName("프로필이 없어도 참가자 수와 역할을 유지하고 개인정보 필드는 null로 반환한다")
     void missingProfileDoesNotRemoveParticipant() {
-        when(matchRepository.findById(101L)).thenReturn(Optional.of(MatchEntity.builder().id(101L).serviceId(7L).build()));
+        when(matchRepository.findById(101L)).thenReturn(Optional.of(MatchEntity.builder().id(101L).serviceId("S7").build()));
         when(matchParticipantRepository.findAllByMatch_IdOrderByIdAsc(101L))
                 .thenReturn(List.of(participant(1L, MatchParticipantRole.OWNER)));
         when(userClient.findProfiles(List.of(1L))).thenReturn(List.of());
@@ -196,7 +196,7 @@ class MatchServiceTest {
     @Test
     @DisplayName("프로필 ID는 Long 값을 잘라내지 않고 반환한다")
     void profileIdRetainsLongValue() {
-        when(matchRepository.findById(101L)).thenReturn(Optional.of(MatchEntity.builder().id(101L).serviceId(7L).build()));
+        when(matchRepository.findById(101L)).thenReturn(Optional.of(MatchEntity.builder().id(101L).serviceId("S7").build()));
         when(matchParticipantRepository.findAllByMatch_IdOrderByIdAsc(101L))
                 .thenReturn(List.of(participant(1L, MatchParticipantRole.OWNER)));
         when(userClient.findProfiles(List.of(1L)))
