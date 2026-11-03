@@ -29,6 +29,15 @@ public class FacilityInternalController {
         );
     }
 
+    @GetMapping("/internal/facility-services/by-id")
+    public ResponseEntity<List<FacilityServiceSummaryDto>> getServicesByIds(
+            @RequestParam("ids") Collection<Long> ids
+    ) {
+        return ResponseEntity.ok(
+                facilityInternalService.findSummariesByIds(ids)
+        );
+    }
+
     @GetMapping("/internal/facility-services/ids")
     public ResponseEntity<List<String>> searchServiceIds(
             @RequestParam(value = "region", required = false) String region,

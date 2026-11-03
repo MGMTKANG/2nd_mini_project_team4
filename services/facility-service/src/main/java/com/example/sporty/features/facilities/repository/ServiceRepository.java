@@ -32,6 +32,9 @@ public interface ServiceRepository
     @EntityGraph(attributePaths = "location")
     List<ServiceEntity> findAllByServiceIdInAndActiveTrue(Collection<String> serviceIds);
 
+    @EntityGraph(attributePaths = "location")
+    List<ServiceEntity> findAllByIdInAndActiveTrue(Collection<Long> ids);
+
     // 지역은 대소문자 무시 부분일치, isFree는 null이면 조건에서 제외한다.
     @Query("""
             select s.serviceId from ServiceEntity s
