@@ -30,6 +30,7 @@ import com.example.sporty.features.commons.config.SecurityConfig;
 import com.example.sporty.features.commons.filter.JwtAuthenticationFilter;
 import com.example.sporty.features.commons.token.JwtProvider;
 import com.example.sporty.features.exerciseMatching.client.FacilityClient;
+import com.example.sporty.features.exerciseMatching.client.PointClient;
 import com.example.sporty.features.exerciseMatching.client.UserClient;
 import com.example.sporty.features.exerciseMatching.domain.entity.MatchEntity;
 import com.example.sporty.features.exerciseMatching.domain.entity.MatchParticipantEntity;
@@ -56,6 +57,7 @@ class MatchCapacityControllerTest {
     @MockitoBean private MatchParticipantRepository matchParticipantRepository;
     @MockitoBean private UserClient userClient;
     @MockitoBean private FacilityClient facilityClient;
+    @MockitoBean private PointClient pointClient;
 
     @ParameterizedTest
     @ValueSource(ints = {-1, 0, 1})

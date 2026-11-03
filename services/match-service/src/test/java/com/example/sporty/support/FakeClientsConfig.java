@@ -19,4 +19,9 @@ public class FakeClientsConfig {
     FakeFacilityClient fakeFacilityClient() {
         return new FakeFacilityClient();
     }
+
+    @Bean
+    FakePointClient fakePointClient() {
+        return new FakePointClient();
+    }
 }

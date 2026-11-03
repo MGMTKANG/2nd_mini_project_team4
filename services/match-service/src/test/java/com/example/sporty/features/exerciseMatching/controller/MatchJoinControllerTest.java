@@ -4,6 +4,7 @@ import com.example.sporty.features.exerciseMatching.client.UserClient;
 import com.example.sporty.features.exerciseMatching.client.UserClient.ProfileSummary;
 import com.example.sporty.features.exerciseMatching.client.UserClient.UserSummary;
 import com.example.sporty.features.exerciseMatching.client.FacilityClient;
+import com.example.sporty.features.exerciseMatching.client.PointClient;
 import com.example.sporty.support.FakeClientsConfig;
 import com.example.sporty.support.FakeFacilityClient;
 import com.example.sporty.support.FakeUserClient;
@@ -88,6 +89,9 @@ class MatchJoinControllerTest {
 
     @MockitoBean
     private FacilityClient facilityClient;
+
+    @MockitoBean
+    private PointClient pointClient;
 
     @Test
     @DisplayName("[EM06-001] 로그인 사용자를 PARTICIPANT로 저장하고 201과 참가 정보를 반환한다")

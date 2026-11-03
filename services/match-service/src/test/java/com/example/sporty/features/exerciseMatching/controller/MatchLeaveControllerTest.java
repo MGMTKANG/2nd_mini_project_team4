@@ -4,6 +4,7 @@ import com.example.sporty.features.exerciseMatching.client.UserClient;
 import com.example.sporty.features.exerciseMatching.client.UserClient.ProfileSummary;
 import com.example.sporty.features.exerciseMatching.client.UserClient.UserSummary;
 import com.example.sporty.features.exerciseMatching.client.FacilityClient;
+import com.example.sporty.features.exerciseMatching.client.PointClient;
 import com.example.sporty.support.FakeClientsConfig;
 import com.example.sporty.support.FakeFacilityClient;
 import com.example.sporty.support.FakeUserClient;
@@ -75,6 +76,9 @@ class MatchLeaveControllerTest {
 
     @MockitoBean
     private FacilityClient facilityClient;
+
+    @MockitoBean
+    private PointClient pointClient;
 
     @ParameterizedTest
     @CsvSource({"1,RECRUITING", "-1,CLOSED"})

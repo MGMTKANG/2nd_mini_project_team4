@@ -4,6 +4,7 @@ import com.example.sporty.features.exerciseMatching.client.UserClient;
 import com.example.sporty.features.exerciseMatching.client.UserClient.ProfileSummary;
 import com.example.sporty.features.exerciseMatching.client.UserClient.UserSummary;
 import com.example.sporty.features.exerciseMatching.client.FacilityClient;
+import com.example.sporty.features.exerciseMatching.client.PointClient;
 import com.example.sporty.support.FakeClientsConfig;
 import com.example.sporty.support.FakeFacilityClient;
 import com.example.sporty.support.FakeUserClient;
@@ -83,6 +84,9 @@ class MatchDetailControllerTest {
 
     @MockitoBean
     private FacilityClient facilityClient;
+
+    @MockitoBean
+    private PointClient pointClient;
 
     @Test
     @DisplayName("[TC-EM03-01] 비로그인 상세 조회 200, 기본 정보와 참가자 프로필 반환")

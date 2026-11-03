@@ -14,6 +14,7 @@ import com.example.sporty.features.commons.exception.exerciseMatching.MatchAlrea
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchCapacityBelowParticipantsException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchFullException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchRecruitmentClosedException;
+import com.example.sporty.features.commons.exception.exerciseMatching.InsufficientPointsException;
 import com.example.sporty.features.commons.exception.users.UserNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -89,6 +90,15 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.builder()
                         .code("MATCH_ALREADY_STARTED")
+                        .message(e.getMessage())
+                        .build());
+    }
+
+    @ExceptionHandler(InsufficientPointsException.class)
+    public ResponseEntity<ErrorResponse> handleInsufficientPoints(InsufficientPointsException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ErrorResponse.builder()
+                        .code("INSUFFICIENT_POINTS")
                         .message(e.getMessage())
                         .build());
     }

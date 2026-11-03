@@ -22,6 +22,7 @@ import com.example.sporty.features.commons.exception.exerciseMatching.MatchFullE
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchRecruitmentClosedException;
 import com.example.sporty.features.exerciseMatching.client.FacilityClient;
 import com.example.sporty.features.exerciseMatching.client.FacilityClient.FacilityServiceSummary;
+import com.example.sporty.features.exerciseMatching.client.PointClient;
 import com.example.sporty.features.exerciseMatching.client.UserClient;
 import com.example.sporty.features.exerciseMatching.client.UserClient.ProfileSummary;
 import com.example.sporty.features.exerciseMatching.client.UserClient.UserSummary;
@@ -61,6 +62,7 @@ public class MatchService {
     private final MatchParticipantRepository matchParticipantRepository;
     private final UserClient userClient;
     private final FacilityClient facilityClient;
+    private final PointClient pointClient;
     private final MatchUserGuard userGuard;
 
     // [EM-08] 내 매치 목록 조회
@@ -188,11 +190,20 @@ public class MatchService {
             throw new MatchFullException();
         }
 
+        // 크라우드펀딩 매치만 참가비를 차감한다 (SAGA 보상 트랜잭션의 시작점).
+        // 참가자 행을 만들기 전에 차감해서, 포인트 부족 시 롤백할 참가 기록이 없게 한다.
+        Long contributionPoints = null;
+        if (match.getTargetPoints() != null) {
+            contributionPoints = (long) Math.ceil(match.getTargetPoints() / (double) match.getMaxParticipant());
+            pointClient.deduct(userId, contributionPoints);
+        }
+
         MatchParticipantEntity participant = matchParticipantRepository.save(
                 MatchParticipantEntity.builder()
                         .match(match)
                         .userId(userId)
                         .role(MatchParticipantRole.PARTICIPANT)
+                        .contributionPoints(contributionPoints)
                         .build());
 
         if (participantCount + 1 == match.getMaxParticipant()) {
@@ -207,6 +218,29 @@ public class MatchService {
                 .build();
     }
 
+
+    /**
+     * SAGA 데모용 수동 트리거: 정원 미달로 펀딩이 실패했다고 보고 매치를 마감하고,
+     * 참가비를 낸 참가자 전원에게 보상 트랜잭션(환불)을 수행한다.
+     * 실제 마감 시각 판정 로직(배치/크론)은 데모 범위에서 생략한다.
+     */
+    @Transactional
+    public void failFunding(Long matchId) {
+        MatchEntity match = matchRepository.findByIdForUpdate(matchId)
+                .orElseThrow(MatchNotFoundException::new);
+
+        List<MatchParticipantEntity> participants =
+                matchParticipantRepository.findAllByMatch_IdOrderByIdAsc(matchId);
+
+        for (MatchParticipantEntity participant : participants) {
+            if (participant.getContributionPoints() != null && participant.getContributionPoints() > 0) {
+                pointClient.refund(participant.getUserId(), participant.getContributionPoints());
+                participant.clearContribution();
+            }
+        }
+
+        match.closeRecruitment();
+    }
 
     // EM-05: 참가 기록과 매치를 한 트랜잭션에서 삭제한다.
     @Transactional
@@ -450,6 +484,7 @@ public class MatchService {
                 .sportType(match.getSportType())
                 .genderGroup(match.getGenderGroup())
                 .serviceId(match.getServiceId())
+                .targetPoints(match.getTargetPoints())
                 .participants(participantSummaries)
                 .isOwner(isOwner)
                 .isParticipant(isParticipant)

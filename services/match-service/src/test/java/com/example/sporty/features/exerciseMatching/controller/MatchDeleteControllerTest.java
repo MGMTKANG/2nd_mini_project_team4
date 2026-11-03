@@ -4,6 +4,7 @@ import com.example.sporty.features.exerciseMatching.client.UserClient;
 import com.example.sporty.features.exerciseMatching.client.UserClient.ProfileSummary;
 import com.example.sporty.features.exerciseMatching.client.UserClient.UserSummary;
 import com.example.sporty.features.exerciseMatching.client.FacilityClient;
+import com.example.sporty.features.exerciseMatching.client.PointClient;
 import com.example.sporty.support.FakeClientsConfig;
 import com.example.sporty.support.FakeFacilityClient;
 import com.example.sporty.support.FakeUserClient;
@@ -76,6 +77,9 @@ class MatchDeleteControllerTest {
 
     @MockitoBean
     private FacilityClient facilityClient;
+
+    @MockitoBean
+    private PointClient pointClient;
 
     @Test
     @DisplayName("[EM05-001] 생성자는 참가 기록과 매치를 삭제하고 본문 없는 204를 받는다")

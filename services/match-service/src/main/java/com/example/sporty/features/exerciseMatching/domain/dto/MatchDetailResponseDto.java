@@ -46,6 +46,9 @@ public class MatchDetailResponseDto {
     private String locationName;
     private String region;
 
+    // 크라우드펀딩 목표 금액. 값이 없으면(null) 프론트가 펀딩 UI 자체를 숨긴다.
+    private Long targetPoints;
+
     private List<MatchParticipantSummaryDto> participants;
 
     // 현재 조회 사용자 기준. 비로그인은 둘 다 false, OWNER는 둘 다 true다.
