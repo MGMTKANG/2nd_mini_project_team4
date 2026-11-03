@@ -1,0 +1,17 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: sporty
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          # 인프라
+          - host.docker.internal:8761   # service-discovery
+          - host.docker.internal:8888   # config-service
+          - host.docker.internal:8000   # api-gateway
+          # 서비스 (각 서비스에 Prometheus 적용 후 UP)
+          - host.docker.internal:8081   # user-service
+          - host.docker.internal:8082   # match-service
+          - host.docker.internal:8083   # facility-service
+          - host.docker.internal:8084   # ai-service
