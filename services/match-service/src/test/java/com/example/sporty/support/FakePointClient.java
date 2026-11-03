@@ -11,9 +11,19 @@ public class FakePointClient implements PointClient {
 
     private static final long DEFAULT_BALANCE = 1_000_000L;
     private final Map<Long, Long> balances = new ConcurrentHashMap<>();
+    private final Map<Long, Integer> refundCallCounts = new ConcurrentHashMap<>();
 
     public void setBalance(Long userId, Long balance) {
         balances.put(userId, balance);
+    }
+
+    public Long getBalance(Long userId) {
+        return balances.getOrDefault(userId, DEFAULT_BALANCE);
+    }
+
+    // 중복 환불(이중 지급) 버그를 테스트에서 잡기 위해 refund 호출 횟수를 센다.
+    public int getRefundCallCount(Long userId) {
+        return refundCallCounts.getOrDefault(userId, 0);
     }
 
     @Override
@@ -29,6 +39,7 @@ public class FakePointClient implements PointClient {
 
     @Override
     public Long refund(Long userId, Long amount) {
+        refundCallCounts.merge(userId, 1, Integer::sum);
         long updated = balances.getOrDefault(userId, DEFAULT_BALANCE) + amount;
         balances.put(userId, updated);
         return updated;

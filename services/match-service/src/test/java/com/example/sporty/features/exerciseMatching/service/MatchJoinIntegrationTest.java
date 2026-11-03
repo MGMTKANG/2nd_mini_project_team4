@@ -6,6 +6,7 @@ import com.example.sporty.features.exerciseMatching.client.UserClient.UserSummar
 import com.example.sporty.features.exerciseMatching.client.FacilityClient;
 import com.example.sporty.support.FakeClientsConfig;
 import com.example.sporty.support.FakeFacilityClient;
+import com.example.sporty.support.FakePointClient;
 import com.example.sporty.support.FakeUserClient;
 import com.example.sporty.support.MatchDatabaseCleanup;
 
@@ -41,6 +42,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import com.example.sporty.features.commons.exception.exerciseMatching.InsufficientPointsException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchAlreadyJoinedException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchAlreadyStartedException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchFullException;
@@ -91,6 +93,9 @@ class MatchJoinIntegrationTest {
 
     @Autowired
     private FakeFacilityClient fakeFacilityClient;
+
+    @Autowired
+    private FakePointClient fakePointClient;
 
     private Map<Long, Long> users;
     private Long serviceId;
@@ -317,6 +322,83 @@ class MatchJoinIntegrationTest {
         } catch (RuntimeException exception) {
             return exception;
         }
+    }
+
+    private Long createFundedMatch(int maxParticipant, Long targetPoints) {
+        return new TransactionTemplate(transactionManager).execute(status -> {
+            MatchEntity match = matchRepository.save(MatchEntity.builder()
+                    .title("펀딩 참여 테스트").sportType(SportType.FUTSAL).maxParticipant(maxParticipant)
+                    .serviceId(serviceId).genderGroup(GenderGroup.MIXED).targetPoints(targetPoints)
+                    .status(MatchStatus.RECRUITING).startAt(LocalDateTime.now().plusDays(1))
+                    .endAt(LocalDateTime.now().plusDays(1).plusHours(2)).build());
+            matchParticipantRepository.save(MatchParticipantEntity.builder()
+                    .match(match).userId(users.get(1L)).role(MatchParticipantRole.OWNER).build());
+            return match.getId();
+        });
+    }
+
+    @Test
+    @DisplayName("크라우드펀딩 매치에 참가하면 1인당 참가비가 차감되고 contributionPoints에 기록된다")
+    void joinFundedMatchDeductsEntryPointsAndRecordsContribution() {
+        Long matchId = createFundedMatch(4, 10000L);
+        fakePointClient.setBalance(userId(2L), 5000L);
+
+        matchService.joinMatch(matchId, userId(2L));
+
+        // ceil(10000 / 4) = 2500
+        assertThat(fakePointClient.getBalance(userId(2L))).isEqualTo(2500L);
+        MatchParticipantEntity participant = matchParticipantRepository
+                .findByMatch_IdAndUserId(matchId, userId(2L)).orElseThrow();
+        assertThat(participant.getContributionPoints()).isEqualTo(2500L);
+    }
+
+    @Test
+    @DisplayName("포인트가 부족하면 참가가 거부되고 참가 기록이 생성되지 않는다")
+    void joinFundedMatchRejectsWhenPointsInsufficient() {
+        Long matchId = createFundedMatch(4, 10000L);
+        fakePointClient.setBalance(userId(2L), 1000L);
+
+        assertThatThrownBy(() -> matchService.joinMatch(matchId, userId(2L)))
+                .isInstanceOf(InsufficientPointsException.class);
+
+        assertThat(matchParticipantRepository.findByMatch_IdAndUserId(matchId, userId(2L))).isEmpty();
+        assertThat(fakePointClient.getBalance(userId(2L))).isEqualTo(1000L);
+    }
+
+    @Test
+    @DisplayName("일반 매치(targetPoints 없음) 참가는 포인트를 차감하지 않는다")
+    void joinNonFundedMatchDoesNotTouchPoints() {
+        Long matchId = createMatch(4, MatchStatus.RECRUITING, LocalDateTime.now().plusDays(1));
+        fakePointClient.setBalance(userId(2L), 1000L);
+
+        matchService.joinMatch(matchId, userId(2L));
+
+        assertThat(fakePointClient.getBalance(userId(2L))).isEqualTo(1000L);
+    }
+
+    @Test
+    @DisplayName("failFunding은 참가비를 낸 참가자 전원에게 환불하고 매치를 마감한다")
+    void failFundingRefundsAllContributionsAndClosesMatch() {
+        Long matchId = createFundedMatch(4, 10000L);
+        fakePointClient.setBalance(userId(2L), 5000L);
+        fakePointClient.setBalance(userId(3L), 5000L);
+        matchService.joinMatch(matchId, userId(2L));
+        matchService.joinMatch(matchId, userId(3L));
+        assertThat(fakePointClient.getBalance(userId(2L))).isEqualTo(2500L);
+        assertThat(fakePointClient.getBalance(userId(3L))).isEqualTo(2500L);
+
+        matchService.failFunding(matchId);
+
+        assertThat(fakePointClient.getBalance(userId(2L))).isEqualTo(5000L);
+        assertThat(fakePointClient.getBalance(userId(3L))).isEqualTo(5000L);
+        assertThat(matchRepository.findById(matchId).orElseThrow().getStatus()).isEqualTo(MatchStatus.CLOSED);
+        assertThat(matchParticipantRepository.findByMatch_IdAndUserId(matchId, userId(2L))
+                .orElseThrow().getContributionPoints()).isNull();
+
+        // 재호출해도(멱등하진 않지만) 이미 clearContribution된 참가자는 다시 환불되지 않는다.
+        matchService.failFunding(matchId);
+        assertThat(fakePointClient.getBalance(userId(2L))).isEqualTo(5000L);
+        assertThat(fakePointClient.getRefundCallCount(userId(2L))).isEqualTo(1);
     }
 
     private Long createMatch(int maxParticipant, MatchStatus matchStatus, LocalDateTime startAt) {

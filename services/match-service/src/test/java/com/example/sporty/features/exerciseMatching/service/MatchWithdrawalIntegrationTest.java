@@ -46,6 +46,7 @@ import com.example.sporty.features.exerciseMatching.repository.MatchRepository;
 import com.example.sporty.support.FacilityFixtures;
 import com.example.sporty.support.FakeClientsConfig;
 import com.example.sporty.support.FakeFacilityClient;
+import com.example.sporty.support.FakePointClient;
 import com.example.sporty.support.FakeUserClient;
 import com.example.sporty.support.MatchUserFixtures;
 import com.example.sporty.support.MatchDatabaseCleanup;
@@ -71,6 +72,7 @@ class MatchWithdrawalIntegrationTest {
     @Autowired private DataSource dataSource;
     @Autowired private FakeUserClient fakeUserClient;
     @Autowired private FakeFacilityClient fakeFacilityClient;
+    @Autowired private FakePointClient fakePointClient;
 
     private Map<Long, Long> users;
     private Long serviceId;
@@ -221,6 +223,28 @@ class MatchWithdrawalIntegrationTest {
                 .startAt(startAt).endAt(startAt.plusHours(2)).maxParticipant(capacity)
                 .skillLevel(SkillLevel.BEGINNER).sportType(SportType.FUTSAL)
                 .genderGroup(GenderGroup.MIXED).build()));
+    }
+
+    private Long createFundedMatch(long ownerLabel, int capacity, long targetPoints) {
+        LocalDateTime startAt = LocalDateTime.now().plusDays(1).withNano(0);
+        return transactions.execute(status -> matchService.createMatch(users.get(ownerLabel), MatchCreateRequestDto.builder()
+                .serviceId(serviceId).title("펀딩 탈퇴 정리 대상").description("기존 설명")
+                .startAt(startAt).endAt(startAt.plusHours(2)).maxParticipant(capacity).targetPoints(targetPoints)
+                .skillLevel(SkillLevel.BEGINNER).sportType(SportType.FUTSAL)
+                .genderGroup(GenderGroup.MIXED).build()));
+    }
+
+    @Test
+    void withdrawalRefundsAllParticipantsOfFundedMatchBeforeDeletingIt() {
+        Long fundedId = createFundedMatch(1L, 3, 9000L);
+        fakePointClient.setBalance(users.get(2L), 5000L);
+        joinMatch(fundedId, 2L);
+        assertThat(fakePointClient.getBalance(users.get(2L))).isEqualTo(2000L);
+
+        matchService.removeMatchesForWithdrawal(users.get(1L));
+
+        assertThat(fakePointClient.getBalance(users.get(2L))).isEqualTo(5000L);
+        assertThat(matchRepository.existsById(fundedId)).isFalse();
     }
 
     private void joinMatch(Long matchId, long userLabel) {
