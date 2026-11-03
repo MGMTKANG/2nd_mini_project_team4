@@ -33,6 +33,16 @@ public class FacilityInternalService {
                 .toList();
     }
 
+    // 내부 숫자 PK로 조회한다 (없는 ID·비활성 시설은 결과에서 빠진다).
+    public List<FacilityServiceSummaryDto> findSummariesByIds(Collection<Long> ids) {
+        List<ServiceEntity> services =
+                serviceRepository.findAllByIdInAndActiveTrue(ids);
+
+        return services.stream()
+                .map(FacilityServiceSummaryDto::from)
+                .toList();
+    }
+
     // region은 대소문자 무시 부분일치, isFree는 비우면 조건에서 제외한다.
     public List<String> searchServiceIds(String region, Boolean isFree) {
         return serviceRepository.findActiveServiceIdsByRegionAndIsFree(

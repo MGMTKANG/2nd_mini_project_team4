@@ -15,6 +15,7 @@ public final class PublicEndpoints {
             PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, "/api/services/{serviceId}"),
             PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, "/internal/facility-services"),
             PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, "/internal/facility-services/ids"),
+            PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, "/internal/facility-services/by-id"),
             PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, "/actuator/health"),
             PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, "/actuator/health/liveness"),
             PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, "/actuator/health/readiness"),
