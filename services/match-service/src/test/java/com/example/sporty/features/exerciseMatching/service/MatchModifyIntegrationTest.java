@@ -28,6 +28,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchCapacityBelowParticipantsException;
+import com.example.sporty.features.commons.exception.exerciseMatching.FundedMatchCapacityImmutableException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchRecruitmentClosedException;
 import com.example.sporty.features.commons.util.SportType;
 import com.example.sporty.features.exerciseMatching.domain.dto.MatchCreateRequestDto;
@@ -284,6 +285,55 @@ class MatchModifyIntegrationTest {
         assertThat(participantCount).isLessThanOrEqualTo(stored.getMaxParticipant().longValue());
         assertThat(stored.getStatus()).isEqualTo(participantCount == stored.getMaxParticipant()
                 ? MatchStatus.CLOSED : MatchStatus.RECRUITING);
+    }
+
+    @Test
+    @DisplayName("크라우드펀딩 매치는 정원을 늘리거나 줄일 수 없다 - 1인당 부담액이 가입 시점 정원으로 고정되기 때문")
+    void fundedMatchRejectsAnyCapacityChange() {
+        Long matchId = createFundedMatch(4, 2, 10_000L);
+        MatchEntity before = matchRepository.findById(matchId).orElseThrow();
+
+        assertThatThrownBy(() -> matchService.modifyMatch(matchId, users.get(1L), modification(3)))
+                .isInstanceOf(FundedMatchCapacityImmutableException.class)
+                .hasMessage("크라우드펀딩 매치는 모집 정원을 변경할 수 없습니다.");
+        assertThatThrownBy(() -> matchService.modifyMatch(matchId, users.get(1L), modification(6)))
+                .isInstanceOf(FundedMatchCapacityImmutableException.class);
+
+        MatchEntity after = matchRepository.findById(matchId).orElseThrow();
+        assertThat(after).usingRecursiveComparison().isEqualTo(before);
+        assertState(matchId, 2, 4, MatchStatus.RECRUITING);
+    }
+
+    @Test
+    @DisplayName("[회귀] 정원을 줄여 가입 시점보다 적은 기여금으로 매치를 채우는 경로를 막는다")
+    void reducingFundedMatchCapacityNoLongerUnderCollectsFunding() {
+        // 정원 10명짜리 펀딩 매치에서 2명만 1인당 1000(=ceil(10000/10))씩 낸 상태.
+        // 과거에는 정원을 2명으로 줄이면 즉시 CLOSED(=펀딩 성공으로 간주)되어 failFunding이
+        // "이미 펀딩 성공"으로 거부했지만, 실제 모인 돈은 2000으로 목표 10000에 크게 못 미쳤다.
+        Long matchId = createFundedMatch(10, 2, 10_000L);
+        assertState(matchId, 2, 10, MatchStatus.RECRUITING);
+
+        assertThatThrownBy(() -> matchService.modifyMatch(matchId, users.get(1L), modification(2)))
+                .isInstanceOf(FundedMatchCapacityImmutableException.class);
+
+        // 정원이 그대로 10명이므로 매치는 계속 모집 중이고, 과소 모금된 채로 마감되지 않는다.
+        // (과거 버그라면 여기서 이미 CLOSED였고, failFunding은 "이미 펀딩 성공"으로 거부했을 것이다.)
+        assertState(matchId, 2, 10, MatchStatus.RECRUITING);
+        matchService.failFunding(matchId);
+        assertState(matchId, 2, 10, MatchStatus.CLOSED);
+    }
+
+    private Long createFundedMatch(int capacity, int participantCount, long targetPoints) {
+        LocalDateTime startAt = LocalDateTime.now().plusDays(1).withNano(0);
+        Long matchId = matchService.createMatch(users.get(1L), MatchCreateRequestDto.builder()
+                .serviceId(serviceId).title("펀딩 매치").description("펀딩 설명")
+                .startAt(startAt).endAt(startAt.plusHours(2)).maxParticipant(capacity)
+                .skillLevel(SkillLevel.BEGINNER).sportType(SportType.FUTSAL)
+                .genderGroup(GenderGroup.MIXED).targetPoints(targetPoints).build());
+        for (long label = 2; label <= participantCount; label++) {
+            matchService.joinMatch(matchId, users.get(label));
+        }
+        return matchId;
     }
 
     private Object afterSignal(CountDownLatch ready, CountDownLatch start, Callable<Object> action)

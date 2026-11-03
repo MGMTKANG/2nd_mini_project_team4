@@ -18,6 +18,7 @@ import com.example.sporty.features.commons.exception.exerciseMatching.MatchParti
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchAlreadyJoinedException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchAlreadyStartedException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchCapacityBelowParticipantsException;
+import com.example.sporty.features.commons.exception.exerciseMatching.FundedMatchCapacityImmutableException;
 import com.example.sporty.features.commons.exception.exerciseMatching.FundingNotFailedException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchNotFundedException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchFullException;
@@ -296,6 +297,14 @@ public class MatchService {
         // 원격 조회 중 탈퇴가 커밋됐을 수 있으므로 저장 전에 로컬 상태를 잠가 확인한다.
         userGuard.requireActive(userId);
 
+        // 크라우드펀딩 매치는 생성자도 1인당 참가비를 낸다. 그렇지 않으면 정원이 다 차도
+        // 생성자 몫만큼 목표 금액에 못 미친다 (joinMatch와 같은 공식, 같은 차감 시점).
+        Long contributionPoints = null;
+        if (req.getTargetPoints() != null) {
+            contributionPoints = (long) Math.ceil(req.getTargetPoints() / (double) req.getMaxParticipant());
+            pointClient.deduct(userId, contributionPoints);
+        }
+
         // 3. create MatchEntity and save
         MatchEntity savedMatchEntity =
             matchRepository.save(req.toEntity());
@@ -308,6 +317,7 @@ public class MatchService {
             .userId(userId)
             .match(savedMatchEntity)
             .role(MatchParticipantRole.OWNER)
+            .contributionPoints(contributionPoints)
             .build();
 
         matchParticipantRepository.save(matchParticipantEntity);
@@ -331,6 +341,13 @@ public class MatchService {
         matchParticipantRepository.findByMatch_IdAndUserId(matchId, userId)
                 .filter(participant -> participant.getRole() == MatchParticipantRole.OWNER)
                 .orElseThrow(MatchModifyForbiddenException::new);
+
+        // 크라우드펀딩 매치는 참가비(1인당 목표금액/정원)가 가입 시점의 정원으로 고정된다.
+        // 정원이 바뀌면 이미 낸 참가자와 새로 낼 참가자의 1인당 부담액이 달라져, 정원이 차도
+        // 총 기여금이 목표 금액에 못 미칠 수 있다. 데모 범위에서는 재정산 대신 변경 자체를 막는다.
+        if (match.getTargetPoints() != null && !req.getMaxParticipant().equals(match.getMaxParticipant())) {
+            throw new FundedMatchCapacityImmutableException();
+        }
 
         // OWNER를 포함한 현재 인원을 확인하고, 거절 시 어떤 필드도 변경하지 않는다.
         long participantCount = matchParticipantRepository.countByMatch_Id(matchId);

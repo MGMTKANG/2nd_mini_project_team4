@@ -12,6 +12,7 @@ import com.example.sporty.features.commons.exception.exerciseMatching.MatchParti
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchAlreadyJoinedException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchAlreadyStartedException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchCapacityBelowParticipantsException;
+import com.example.sporty.features.commons.exception.exerciseMatching.FundedMatchCapacityImmutableException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchFullException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchRecruitmentClosedException;
 import com.example.sporty.features.commons.exception.exerciseMatching.InsufficientPointsException;
@@ -138,6 +139,16 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.builder()
                         .code("MATCH_CAPACITY_BELOW_PARTICIPANTS")
+                        .message(e.getMessage())
+                        .build());
+    }
+
+    @ExceptionHandler(FundedMatchCapacityImmutableException.class)
+    public ResponseEntity<ErrorResponse> handleFundedMatchCapacityImmutable(
+            FundedMatchCapacityImmutableException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.builder()
+                        .code("FUNDED_MATCH_CAPACITY_IMMUTABLE")
                         .message(e.getMessage())
                         .build());
     }
