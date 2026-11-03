@@ -18,6 +18,8 @@ import com.example.sporty.features.commons.exception.exerciseMatching.MatchParti
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchAlreadyJoinedException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchAlreadyStartedException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchCapacityBelowParticipantsException;
+import com.example.sporty.features.commons.exception.exerciseMatching.FundingNotFailedException;
+import com.example.sporty.features.commons.exception.exerciseMatching.MatchNotFundedException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchFullException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchRecruitmentClosedException;
 import com.example.sporty.features.exerciseMatching.client.FacilityClient;
@@ -230,6 +232,17 @@ public class MatchService {
     public void failFunding(Long matchId) {
         MatchEntity match = matchRepository.findByIdForUpdate(matchId)
                 .orElseThrow(MatchNotFoundException::new);
+
+        // 크라우드펀딩 매치가 아니면 "펀딩 실패"라는 개념 자체가 성립하지 않는다.
+        if (match.getTargetPoints() == null) {
+            throw new MatchNotFundedException();
+        }
+
+        // 정원이 이미 찼다면(펀딩 성공) 환불 대상이 아니다. 이미 CLOSED여도 정원 미달 사유일 수 있으니 인원으로만 판단한다.
+        long participantCount = matchParticipantRepository.countByMatch_Id(matchId);
+        if (participantCount >= match.getMaxParticipant()) {
+            throw new FundingNotFailedException();
+        }
 
         refundAllContributions(matchParticipantRepository.findAllByMatch_IdOrderByIdAsc(matchId));
 

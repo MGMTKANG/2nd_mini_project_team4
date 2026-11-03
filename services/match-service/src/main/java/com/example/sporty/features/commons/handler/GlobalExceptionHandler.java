@@ -15,6 +15,8 @@ import com.example.sporty.features.commons.exception.exerciseMatching.MatchCapac
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchFullException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchRecruitmentClosedException;
 import com.example.sporty.features.commons.exception.exerciseMatching.InsufficientPointsException;
+import com.example.sporty.features.commons.exception.exerciseMatching.FundingNotFailedException;
+import com.example.sporty.features.commons.exception.exerciseMatching.MatchNotFundedException;
 import com.example.sporty.features.commons.exception.users.UserNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -99,6 +101,24 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ErrorResponse.builder()
                         .code("INSUFFICIENT_POINTS")
+                        .message(e.getMessage())
+                        .build());
+    }
+
+    @ExceptionHandler(MatchNotFundedException.class)
+    public ResponseEntity<ErrorResponse> handleMatchNotFunded(MatchNotFundedException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.builder()
+                        .code("MATCH_NOT_FUNDED")
+                        .message(e.getMessage())
+                        .build());
+    }
+
+    @ExceptionHandler(FundingNotFailedException.class)
+    public ResponseEntity<ErrorResponse> handleFundingNotFailed(FundingNotFailedException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.builder()
+                        .code("FUNDING_NOT_FAILED")
                         .message(e.getMessage())
                         .build());
     }

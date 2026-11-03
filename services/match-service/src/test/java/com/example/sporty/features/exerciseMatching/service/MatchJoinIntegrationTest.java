@@ -42,7 +42,9 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import com.example.sporty.features.commons.exception.exerciseMatching.FundingNotFailedException;
 import com.example.sporty.features.commons.exception.exerciseMatching.InsufficientPointsException;
+import com.example.sporty.features.commons.exception.exerciseMatching.MatchNotFundedException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchAlreadyJoinedException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchAlreadyStartedException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchFullException;
@@ -399,6 +401,35 @@ class MatchJoinIntegrationTest {
         matchService.failFunding(matchId);
         assertThat(fakePointClient.getBalance(userId(2L))).isEqualTo(5000L);
         assertThat(fakePointClient.getRefundCallCount(userId(2L))).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("정원이 다 찬(펀딩 성공) 매치에는 failFunding을 호출할 수 없고 환불도 되지 않는다")
+    void failFundingRejectsMatchThatReachedCapacity() {
+        Long matchId = createFundedMatch(2, 4000L);
+        fakePointClient.setBalance(userId(2L), 5000L);
+        matchService.joinMatch(matchId, userId(2L));
+        assertThat(matchRepository.findById(matchId).orElseThrow().getStatus()).isEqualTo(MatchStatus.CLOSED);
+        assertThat(fakePointClient.getBalance(userId(2L))).isEqualTo(3000L);
+
+        assertThatThrownBy(() -> matchService.failFunding(matchId))
+                .isInstanceOf(FundingNotFailedException.class);
+
+        assertThat(fakePointClient.getBalance(userId(2L))).isEqualTo(3000L);
+        assertThat(fakePointClient.getRefundCallCount(userId(2L))).isZero();
+        assertThat(matchParticipantRepository.findByMatch_IdAndUserId(matchId, userId(2L))
+                .orElseThrow().getContributionPoints()).isEqualTo(2000L);
+    }
+
+    @Test
+    @DisplayName("크라우드펀딩 매치가 아니면 failFunding을 호출할 수 없다")
+    void failFundingRejectsNonFundedMatch() {
+        Long matchId = createMatch(4, MatchStatus.RECRUITING, LocalDateTime.now().plusDays(1));
+
+        assertThatThrownBy(() -> matchService.failFunding(matchId))
+                .isInstanceOf(MatchNotFundedException.class);
+
+        assertThat(matchRepository.findById(matchId).orElseThrow().getStatus()).isEqualTo(MatchStatus.RECRUITING);
     }
 
     private Long createMatch(int maxParticipant, MatchStatus matchStatus, LocalDateTime startAt) {
