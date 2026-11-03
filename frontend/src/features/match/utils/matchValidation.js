@@ -13,6 +13,7 @@ export function initialMatchValues(match = {}) {
     endDate: match.endAt?.slice(0, 10) || '',
     endTime: match.endAt?.slice(11, 16) || '',
     maxParticipant: match.maxParticipant ?? 12,
+    targetPoints: match.targetPoints ?? '',
     skillLevel: match.skillLevel || 'BEGINNER',
     title: match.title || '',
     description: match.description || '',
@@ -32,6 +33,11 @@ export function validateMatch(values, { isEdit = false } = {}) {
     if (Number.isNaN(end.getTime()) || end <= start) errors.endAt = '종료 일시는 시작 일시보다 늦어야 합니다.';
   }
   if (!Number.isInteger(Number(values.maxParticipant)) || Number(values.maxParticipant) < 1) errors.maxParticipant = '모집 인원은 1명 이상의 정수로 입력해주세요.';
+  // 아직 선택 입력이다: 비워두면 통과, 입력했으면 1원 이상의 정수여야 한다.
+  if (values.targetPoints !== '' && values.targetPoints != null
+      && (!Number.isInteger(Number(values.targetPoints)) || Number(values.targetPoints) < 1)) {
+    errors.targetPoints = '시설 예약 비용을 1원 이상의 정수로 입력해주세요.';
+  }
   if (!values.title.trim() || values.title.trim().length > 50) errors.title = '매치 제목을 1~50자로 입력해주세요.';
   if ((!isEdit && !values.description.trim()) || values.description.length > 500) errors.description = isEdit ? '상세 안내는 500자 이하로 입력해주세요.' : '상세 안내를 1~500자로 입력해주세요.';
   if (!SKILL_LEVELS.some(level => level.value === values.skillLevel)) errors.skillLevel = '경기 실력 레벨을 선택해주세요.';
@@ -41,6 +47,8 @@ export function validateMatch(values, { isEdit = false } = {}) {
 }
 
 export function toMatchPayload(values) {
+  const targetPoints = Number(values.targetPoints);
+  const hasTargetPoints = Number.isInteger(targetPoints) && targetPoints > 0;
   return {
     serviceId: Number(values.serviceId),
     title: values.title.trim(),
@@ -48,8 +56,17 @@ export function toMatchPayload(values) {
     startAt: `${values.date}T${values.startTime}`,
     endAt: `${values.endDate || values.date}T${values.endTime}`,
     maxParticipant: Number(values.maxParticipant),
+    ...(hasTargetPoints ? { targetPoints } : {}),
     skillLevel: values.skillLevel,
     sportType: values.sportType,
     genderGroup: values.genderGroup,
   };
+}
+
+// 1인당 참가비(entry_points) = 총 예약 비용(target_points) ÷ 모집 인원. 못 나누면 올림한다.
+export function entryPointsOf(targetPoints, maxParticipant) {
+  const target = Number(targetPoints);
+  const max = Number(maxParticipant);
+  if (!Number.isFinite(target) || target <= 0 || !Number.isInteger(max) || max < 1) return null;
+  return Math.ceil(target / max);
 }

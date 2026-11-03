@@ -114,3 +114,12 @@ test('joins once, shows 501 failure, and allows retry without a false success', 
   expect(result.current.joinMessage).toBe('참가 신청이 완료되었습니다.');
   expect(fetchMatchList).toHaveBeenCalledTimes(2);
 });
+
+test('preview 모드는 목록·추천·프로필 조회를 전혀 요청하지 않는다', async () => {
+  localStorage.setItem('at', 'test-token');
+  renderHook(() => useMatchList(true), { wrapper });
+  await act(async () => { await Promise.resolve(); });
+  expect(fetchMatchList).not.toHaveBeenCalled();
+  expect(fetchRecommendedMatches).not.toHaveBeenCalled();
+  expect(loadMyPage).not.toHaveBeenCalled();
+});

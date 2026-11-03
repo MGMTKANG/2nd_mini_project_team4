@@ -37,6 +37,7 @@ export default function AppRoutes() {
       <Route path="/matches/:matchId/edit" element={<RequireMatchAuth><MatchEditPage /></RequireMatchAuth>} />
       {/* [EM-02] 목록 UI skeleton. MatchListPage에서 조회 로직 연결 후 preview=false 설정. */}
       <Route path="/matches/search" element={<MatchListPage />} />
+      {process.env.NODE_ENV === 'development' && <Route path="/matches/search/preview" element={<MatchListPage preview />} />}
 
       {/* [FC-01] 시설 검색 — Header의 query를 초기 검색어로 사용한다. */}
       <Route path="/facilities" element={<FacilityListPage />} />

@@ -1,5 +1,5 @@
 import api from '../../../api/axios';
-import { loadMyPage, loadMyMatches, saveProfile, withdrawUser } from './myPageApi';
+import { loadMyPage, loadMyMatches, saveProfile, withdrawUser, loadMyPoints } from './myPageApi';
 jest.mock('../../../api/axios', () => ({ get: jest.fn(), put: jest.fn(), delete: jest.fn() }));
 afterEach(() => jest.clearAllMocks());
 test('내 매치 조회는 userId 없이 인증된 사용자 목록을 요청한다', async () => {
@@ -25,4 +25,10 @@ test('탈퇴 비밀번호는 DELETE 요청 본문으로 보낸다', async () => 
   api.delete.mockResolvedValue({ status: 204 });
   await withdrawUser('test-password');
   expect(api.delete).toHaveBeenCalledWith('/api/users/me', { data: { password: 'test-password' } });
+});
+test('포인트 잔액은 userId 없이 인증된 사용자의 balance만 반환한다', async () => {
+  const signal = new AbortController().signal;
+  api.get.mockResolvedValue({ data: { balance: 9000 } });
+  expect(await loadMyPoints({ signal })).toBe(9000);
+  expect(api.get).toHaveBeenCalledWith('/api/points/me', { signal });
 });

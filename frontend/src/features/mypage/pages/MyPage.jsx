@@ -8,9 +8,10 @@ import { districts, sports } from '../../auth/data/signUpOptions';
 import { previewData } from '../data/previewData';
 import profileIcon from '../assets/profile.svg';
 import accountIcon from '../assets/account.svg';
-import { loadMyPage as fetchMyPage, saveProfile as updateProfile, loadMyMatches as fetchMyMatches } from '../api/myPageApi';
+import { loadMyPage as fetchMyPage, saveProfile as updateProfile, loadMyMatches as fetchMyMatches, loadMyPoints as fetchMyPoints } from '../api/myPageApi';
 import WithdrawalButton from '../components/WithdrawalButton';
 import MyMatches from '../components/MyMatches';
+import MyPoints from '../components/MyPoints';
 import infoIcon from '../assets/info.svg';
 import '../css/mypage.css';
 
@@ -18,7 +19,7 @@ const sportEmoji = ['⚽', '🥅', '🏀', '⚾', '🎾', '🏸', '🏓', '🏐'
 const copyProfile = profile => ({ ...profile, preferenceSports: [...profile.preferenceSports] });
 
 // [USR-06 / PR-01]
-export default function MyPage({ preview = false, loadMyPage = fetchMyPage, saveProfile = updateProfile, loadMyMatches = fetchMyMatches }) {
+export default function MyPage({ preview = false, loadMyPage = fetchMyPage, saveProfile = updateProfile, loadMyMatches = fetchMyMatches, loadMyPoints = fetchMyPoints }) {
   const location = useLocation();
   // [마이페이지] 왼쪽 메뉴 선택값. 탭 전환 시 수정 중인 폼은 유지한다.
   const [activeTab, setActiveTab] = useState('info');
@@ -115,6 +116,7 @@ export default function MyPage({ preview = false, loadMyPage = fetchMyPage, save
               <h2>{saved.profile.nickname}</h2><p>{saved.user.email}</p>
               <dl><div><dt>주 활동 자치구</dt><dd>{district}</dd></div><div><dt>선호 운동</dt><dd>{sports.filter(([value]) => saved.profile.preferenceSports.includes(value)).map(([, label]) => label).join(' · ') || '미설정'}</dd></div></dl>
             </section>
+            <MyPoints loadMyPoints={preview ? undefined : loadMyPoints} onUnauthorized={requireLogin} />
             <nav className="mypage-tabs" aria-label="마이페이지 메뉴">
               <button type="button" aria-current={activeTab === 'info' ? 'page' : undefined} onClick={() => setActiveTab('info')}>내 정보</button>
               <button type="button" aria-current={activeTab === 'matches' ? 'page' : undefined} onClick={() => setActiveTab('matches')}>내 매치 목록 보기</button>

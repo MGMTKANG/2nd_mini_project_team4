@@ -47,15 +47,22 @@ export function toMatchListItem(dto) {
     participants: hasCapacity ? `${dto.numCurrentParticipant}/${dto.maxParticipant}명` : undefined,
     occupancy: hasCapacity ? Math.min(100, dto.numCurrentParticipant / dto.maxParticipant * 100) : undefined,
     remaining: hasCapacity ? `잔여 ${Math.max(0, dto.maxParticipant - dto.numCurrentParticipant)}명` : undefined,
+    // 크라우드펀딩 목표 금액(targetPoints)이 있을 때만 모금 현황을 보여준다. 1인당 참가비로 균등 분할한다.
+    targetPoints: hasCapacity && Number.isFinite(dto.targetPoints) && dto.targetPoints > 0 ? dto.targetPoints : undefined,
+    entryPoints: hasCapacity && Number.isFinite(dto.targetPoints) && dto.targetPoints > 0 ? Math.ceil(dto.targetPoints / dto.maxParticipant) : undefined,
+    fundedPoints: hasCapacity && Number.isFinite(dto.targetPoints) && dto.targetPoints > 0 ? Math.ceil(dto.targetPoints / dto.maxParticipant) * dto.numCurrentParticipant : undefined,
     // 방장 이름·시설명은 현재 목록 DTO에 없고 distance는 서버에서 null로 반환한다.
     // reservationDeadlineAt은 시설 예약 접수 마감이므로 매치 취소 마감으로 사용하지 않는다.
   };
 }
 export function matchRequestError(error, kind = 'list') {
   const status = error.response?.status;
+  const code = error.response?.data?.code;
   if (status === 401) return '로그인이 필요합니다. 다시 로그인해주세요.';
   if (status === 403) return '이 작업을 수행할 권한이 없습니다.';
   if (status === 501 || (status === 404 && kind === 'recommendation')) return '현재 이 기능을 준비 중입니다.';
+  // 크라우드펀딩 매치는 참가비 차감이 필요해, 409가 "이미 참가 중"이 아니라 포인트 부족을 의미할 수도 있다.
+  if (status === 409 && code === 'INSUFFICIENT_POINTS') return '포인트가 부족합니다. 충전 후 다시 시도해주세요.';
   if (status === 409) return '이미 참가 중인 매치입니다.';
   if (status === 400) return kind === 'join' ? '모집이 마감되었거나 정원이 초과되었습니다.' : '검색 조건을 확인해주세요.';
   if (status === 404) return '매치를 찾을 수 없습니다.';
