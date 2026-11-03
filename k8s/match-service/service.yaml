@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: match-service
+  namespace: sporty
+spec:
+  type: ClusterIP
+  selector:
+    app: match-service
+  ports:
+    - name: http
+      port: 8082
+      targetPort: http
