@@ -1,0 +1,8 @@
+name: sporty-rabbitmq
+
+services:
+  rabbitmq:
+    image: rabbitmq:4.1-management
+    ports:
+      - "127.0.0.1:5672:5672"     # 메시지 브로커 (Spring Cloud Bus)
+      - "127.0.0.1:15672:15672"   # 관리 화면

@@ -23,6 +23,17 @@
   - Eureka 사용: `lb://match-service` (+ `EUREKA_ENABLED=true`)
 - 한 환경 안에서는 방식 통일 필요. `lb://` 설정인데 대상 서비스가 Eureka에 미등록이면 `503` 발생.
 
+## Config / Bus
+
+| 환경변수 | 기본값 | 설명 |
+|---|---|---|
+| `CONFIG_ENABLED` | `false` | Config Server에서 설정 수신 |
+| `BUS_ENABLED` | `false` | Spring Cloud Bus 수신 (RabbitMQ 필요, `rabbitmq/README.md`) |
+
+- 라우트는 Config가 아닌 로컬 `application.yml`에서 관리 (K8s에서는 Config 미사용)
+- `/actuator/info`에 `info.*` 설정값 노출 (Config 수신·Bus 갱신 확인용)
+- Bus 동작 확인: `services/config-service/README.md` 참고
+
 ## 인증 / CORS
 
 - **JWT**: gateway는 `Authorization` 헤더를 그대로 전달, **검증은 각 서비스에서 수행**.
