@@ -10,6 +10,7 @@ const previewMatch = {
   endAt: '2026-09-26T21:00:00',
   maxParticipant: 10,
   currentParticipantCount: 4,
+  targetPoints: 10000,
   status: 'RECRUITING',
   skillLevel: 'BEGINNER',
   sportType: 'FUTSAL',

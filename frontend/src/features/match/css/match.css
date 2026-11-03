@@ -86,3 +86,17 @@
 @media (max-width: 800px) { .match-form { grid-template-columns: minmax(0, 1fr); } .match-actions { position: static; } .match-schedule-grid { grid-template-columns: 1fr 1fr; } .match-main h1 { font-size: 28px; } }
 @media (max-width: 540px) { .match-header-inner { min-height: 80px; padding: 20px; align-items: center; } .match-brand > span { display: none; } .match-main { padding: 24px 16px 48px; } .match-main h1 { font-size: 25px; } .match-intro { font-size: 13px; } .match-section { padding: 20px; } .match-section h2 { font-size: 16px; } .match-required { padding: 4px 6px; font-size: 9px; } .match-section-heading { gap: 8px; } .match-sports { grid-template-columns: repeat(3, 1fr); gap: 12px; } .match-schedule-grid { grid-template-columns: 1fr; } .match-footer { padding: 28px 20px; font-size: 11px; } }
 .match-ai-draft { margin-bottom: 24px; padding: 16px; border: 1px solid #dbeafe; border-radius: 12px; background: #eff6ff; overflow-wrap: anywhere; } .match-ai-draft p { margin: 8px 0 0; white-space: pre-wrap; }
+.mjc-overlay { position: fixed; inset: 0; background: #0f172a66; display: grid; place-items: center; padding: 20px; z-index: 50; }
+.mjc-dialog { background: white; border-radius: 16px; padding: 24px; max-width: 360px; width: 100%; box-shadow: 0 10px 40px #0000001a; }
+.mjc-dialog h2 { font-size: 16px; margin: 0 0 4px; color: var(--match-ink, #1e293b); }
+.mjc-match-title { font-size: 13px; color: var(--match-muted, #475569); margin: 0 0 16px; }
+.mjc-facts { display: grid; gap: 8px; margin: 0 0 16px; padding: 14px; background: var(--match-field, #f1f5f9); border-radius: 12px; font-size: 13px; }
+.mjc-facts > div { display: flex; justify-content: space-between; gap: 8px; }
+.mjc-facts dt { color: var(--match-muted, #475569); }
+.mjc-facts dd { margin: 0; font-weight: 600; color: var(--match-ink, #1e293b); }
+.mjc-note { font-size: 11px; color: var(--match-muted, #475569); line-height: 1.6; margin: 0 0 20px; }
+.mjc-actions { display: flex; gap: 8px; }
+.mjc-actions button { flex: 1; padding: 12px; border-radius: 10px; font-size: 13px; font: inherit; cursor: pointer; border: 0; }
+.mjc-actions button:disabled { opacity: .55; cursor: not-allowed; }
+.mjc-cancel { background: var(--match-field, #f1f5f9); color: var(--match-ink, #1e293b); }
+.mjc-confirm { background: var(--match-blue, #2563eb); color: white; }

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { getMatchDetail, joinMatch, leaveMatch, deleteMatch } from '../api/matchApi';
 import ProfileModal from '../../profiles/components/ProfileModal';
+import MatchJoinConfirmModal from '../components/MatchJoinConfirmModal';
 import '../css/match.css';
 import '../css/matchDetail.css';
 
@@ -139,6 +140,7 @@ function MatchDetailContent({ match, preview, onRefresh }) {
   const location = useLocation();
   const [pending, setPending] = useState(null);
   const [actionError, setActionError] = useState('');
+  const [confirmingJoin, setConfirmingJoin] = useState(false);
   const busy = useRef(false);
   const active = useRef(true);
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
@@ -316,9 +318,11 @@ function MatchDetailContent({ match, preview, onRefresh }) {
             <span className="detail-eyebrow">함께 뛰는 즐거움</span><h2>함께할 메이트를 만나요</h2>
             <div className="detail-capacity"><span>모집 인원 현황</span><strong>{current ?? '—'}<small> / {maximum ?? '—'}명</small></strong></div>
             {current !== null && maximum !== null && <progress style={{ '--capacity-color': progress < 25 ? '#2563eb' : progress <= 75 ? '#16a34a' : '#dc2626' }} value={progress} max="100" aria-label="모집 인원 비율" />}
+            {hasFunding && <progress style={{ '--capacity-color': '#f59e0b' }} max="100" value={Math.min(100, Math.round((fundedPoints / match.targetPoints) * 100))} aria-label="펀딩 진행률" />}
             {hasFunding && <p className="detail-funding">₩{fundedPoints.toLocaleString()} / ₩{match.targetPoints.toLocaleString()} 모금 · 1인당 ₩{entryPoints.toLocaleString()}</p>}
             <p className="detail-recruitment-note">{match.status === 'CLOSED' ? '모집이 마감된 매치입니다.' : remaining === null ? '모집 인원을 확인할 수 없습니다.' : remaining === 0 ? '모집 정원이 찼습니다.' : `${remaining}명이 더 함께할 수 있어요.`}</p>
-            <button type="button" className={`detail-primary-button ${match.isOwner || match.isParticipant ? 'is-danger' : 'is-join'}`} disabled={preview || pending !== null || (match.isOwner !== true && match.isParticipant !== true && (match.status !== 'RECRUITING' || remaining === 0))} onClick={match.isOwner === true ? () => performAction('delete') : match.isParticipant === true ? handleLeave : () => performAction('join')}>{pending === 'join' ? '참가 신청 중…' : actionLabel}</button>
+            <button type="button" className={`detail-primary-button ${match.isOwner || match.isParticipant ? 'is-danger' : 'is-join'}`} disabled={preview || pending !== null || (match.isOwner !== true && match.isParticipant !== true && (match.status !== 'RECRUITING' || remaining === 0))} onClick={match.isOwner === true ? () => performAction('delete') : match.isParticipant === true ? handleLeave : () => (hasFunding ? setConfirmingJoin(true) : performAction('join'))}>{pending === 'join' ? '참가 신청 중…' : actionLabel}</button>
+            {confirmingJoin && <MatchJoinConfirmModal title={match.title} targetPoints={match.targetPoints} entryPoints={entryPoints} pending={pending === 'join'} onCancel={() => setConfirmingJoin(false)} onConfirm={() => { setConfirmingJoin(false); performAction('join'); }} />}
             {match.isOwner === true && !preview && pending === null && <Link className="match-edit-link" to={`/matches/${match.matchId}/edit`}>매치 수정하기</Link>}
             {actionError && <div role="alert"><p className="match-error">{actionError}</p><button type="button" disabled={pending !== null} onClick={onRefresh}>새로고침</button></div>}
             <p className="detail-action-note">{match.isOwner === true ? '이 매치의 생성자입니다.' : match.isParticipant === true ? '현재 이 매치에 참여 중입니다.' : '매치 일정과 모집 조건을 확인 후 신청해주세요.'}</p>
