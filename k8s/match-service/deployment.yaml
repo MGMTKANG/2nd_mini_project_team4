@@ -27,7 +27,7 @@ spec:
             - name: TZ
               value: Asia/Seoul
             - name: MATCH_DB_URL
-              value: jdbc:mariadb://172.31.38.169:3307/match_db
+              value: jdbc:mariadb://172.31.38.169:3307/match_db?sslMode=verify-full
             - name: MATCH_DB_USERNAME
               valueFrom:
                 secretKeyRef:
@@ -41,7 +41,7 @@ spec:
             - name: JWT_SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  name: sporty-db-dev-secret
+                  name: sporty-jwt-secret
                   key: JWT_SECRET
             - name: MATCH_JPA_DDL_AUTO
               value: validate
