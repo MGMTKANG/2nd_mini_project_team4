@@ -15,7 +15,9 @@ import org.springframework.web.client.RestClientException;
 
 import com.example.sporty.features.commons.exception.ExternalServiceUnavailableException;
 import com.example.sporty.features.commons.exception.ai.AiDraftException;
+import com.example.sporty.features.commons.exception.ai.AiRecommendException;
 import com.example.sporty.features.commons.exception.ai.AiSearchException;
+import com.example.sporty.features.commons.exception.users.UserNotFoundException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -66,6 +68,16 @@ public class GlobalExceptionHandler {
                         .message(e.getMessage())
                         .build());
     }
+    
+    // AI가 후보 중에서 추천 매치를 고르지 못함 → 500 (1차와 같은 상태 코드)
+    @ExceptionHandler(AiRecommendException.class)
+    public ResponseEntity<ErrorResponse> handleAiRecommend(AiRecommendException e) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ErrorResponse.builder()
+                        .code("AI_RECOMMEND_FAILED")
+                        .message(e.getMessage())
+                        .build());
+    }
 
     // 다른 서비스(match-service 등)가 응답하지 않음 → 503 (match-service와 같은 코드)
     @ExceptionHandler(ExternalServiceUnavailableException.class)
@@ -74,6 +86,16 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(ErrorResponse.builder()
                         .code("EXTERNAL_SERVICE_UNAVAILABLE")
+                        .message(e.getMessage())
+                        .build());
+    }
+
+    // 로그인한 회원을 user-service에서 찾지 못함(탈퇴 등) → 404 (match-service와 같은 코드)
+    @ExceptionHandler(UserNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleUserNotFound(UserNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ErrorResponse.builder()
+                        .code("USER_NOT_FOUND")
                         .message(e.getMessage())
                         .build());
     }
