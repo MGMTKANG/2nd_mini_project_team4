@@ -31,18 +31,18 @@ spec:
             - name: MATCH_DB_USERNAME
               valueFrom:
                 secretKeyRef:
-                  name: match-service-secret
-                  key: MATCH_DB_USERNAME
+                  name: sporty-db-dev-secret
+                  key: DB_USERNAME
             - name: MATCH_DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: match-service-secret
-                  key: MATCH_DB_PASSWORD
+                  name: sporty-db-dev-secret
+                  key: DB_PASSWORD
             - name: JWT_SECRET_KEY
               valueFrom:
                 secretKeyRef:
-                  name: match-service-secret
-                  key: JWT_SECRET_KEY
+                  name: sporty-db-dev-secret
+                  key: JWT_SECRET
             - name: MATCH_JPA_DDL_AUTO
               value: validate
             - name: CONFIG_ENABLED
