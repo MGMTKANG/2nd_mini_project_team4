@@ -38,12 +38,13 @@ import com.example.sporty.features.exerciseMatching.domain.enums.MatchParticipan
 import com.example.sporty.features.exerciseMatching.domain.enums.MatchStatus;
 import com.example.sporty.features.exerciseMatching.repository.MatchParticipantRepository;
 import com.example.sporty.features.exerciseMatching.repository.MatchRepository;
+import com.example.sporty.features.exerciseMatching.service.ContributionRefundService;
 import com.example.sporty.features.exerciseMatching.service.MatchService;
 import com.example.sporty.features.exerciseMatching.service.MatchUserGuard;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 @WebMvcTest(MatchController.class)
-@Import({MatchService.class, SecurityConfig.class, JwtAuthenticationFilter.class})
+@Import({MatchService.class, ContributionRefundService.class, SecurityConfig.class, JwtAuthenticationFilter.class})
 @TestPropertySource(properties = "jwt.secret=test-only-signing-secret-with-at-least-32-bytes")
 class MatchCapacityControllerTest {
     @MockitoBean private MatchUserGuard userGuard;

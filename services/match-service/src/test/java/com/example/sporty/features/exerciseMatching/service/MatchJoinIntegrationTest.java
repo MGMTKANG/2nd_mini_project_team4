@@ -42,6 +42,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import com.example.sporty.features.commons.exception.exerciseMatching.ExternalServiceUnavailableException;
 import com.example.sporty.features.commons.exception.exerciseMatching.FundingNotFailedException;
 import com.example.sporty.features.commons.exception.exerciseMatching.InsufficientPointsException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchNotFundedException;
@@ -428,6 +429,44 @@ class MatchJoinIntegrationTest {
         assertThat(fakePointClient.getRefundCallCount(userId(2L))).isZero();
         assertThat(matchParticipantRepository.findByMatch_IdAndUserId(matchId, userId(2L))
                 .orElseThrow().getContributionPoints()).isEqualTo(2000L);
+    }
+
+    @Test
+    @DisplayName("[회귀] 여러 참가자를 환불하다 한 명이 실패해도 이미 환불된 참가자는 롤백되지 않는다")
+    void refundFailureForOneParticipantDoesNotRollBackAlreadyRefundedOthers() {
+        Long matchId = createFundedMatch(4, 10000L);
+        fakePointClient.setBalance(userId(2L), 5000L);
+        fakePointClient.setBalance(userId(3L), 5000L);
+        matchService.joinMatch(matchId, userId(2L));
+        matchService.joinMatch(matchId, userId(3L));
+        fakePointClient.failNextRefundFor(userId(3L));
+
+        assertThatThrownBy(() -> matchService.failFunding(matchId))
+                .isInstanceOf(ExternalServiceUnavailableException.class);
+
+        // 생성자(1)와 참가자(2)는 참가자(3) 이전에 각자 독립된 트랜잭션으로 이미 환불·커밋됐다.
+        assertThat(fakePointClient.getBalance(userId(1L))).isEqualTo(FakePointClient.DEFAULT_BALANCE);
+        assertThat(matchParticipantRepository.findByMatch_IdAndUserId(matchId, userId(1L))
+                .orElseThrow().getContributionPoints()).isNull();
+        assertThat(fakePointClient.getBalance(userId(2L))).isEqualTo(5000L);
+        assertThat(matchParticipantRepository.findByMatch_IdAndUserId(matchId, userId(2L))
+                .orElseThrow().getContributionPoints()).isNull();
+
+        // 참가자(3)는 환불이 실패했으니 차감된 상태 그대로 남는다.
+        assertThat(fakePointClient.getBalance(userId(3L))).isEqualTo(2500L);
+        assertThat(matchParticipantRepository.findByMatch_IdAndUserId(matchId, userId(3L))
+                .orElseThrow().getContributionPoints()).isEqualTo(2500L);
+
+        // failFunding() 자체의 트랜잭션은 롤백됐으므로 매치는 아직 마감되지 않았다.
+        assertThat(matchRepository.findById(matchId).orElseThrow().getStatus()).isEqualTo(MatchStatus.RECRUITING);
+
+        // 재시도하면 이미 환불된 1·2는 건너뛰고(중복 환불 없음) 3만 환불된다.
+        matchService.failFunding(matchId);
+        assertThat(fakePointClient.getBalance(userId(3L))).isEqualTo(5000L);
+        assertThat(fakePointClient.getRefundCallCount(userId(1L))).isEqualTo(1);
+        assertThat(fakePointClient.getRefundCallCount(userId(2L))).isEqualTo(1);
+        assertThat(fakePointClient.getRefundCallCount(userId(3L))).isEqualTo(1);
+        assertThat(matchRepository.findById(matchId).orElseThrow().getStatus()).isEqualTo(MatchStatus.CLOSED);
     }
 
     @Test

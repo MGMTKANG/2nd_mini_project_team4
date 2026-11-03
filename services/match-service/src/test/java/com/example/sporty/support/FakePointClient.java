@@ -3,6 +3,7 @@ package com.example.sporty.support;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.example.sporty.features.commons.exception.exerciseMatching.ExternalServiceUnavailableException;
 import com.example.sporty.features.commons.exception.exerciseMatching.InsufficientPointsException;
 import com.example.sporty.features.exerciseMatching.client.PointClient;
 
@@ -12,9 +13,15 @@ public class FakePointClient implements PointClient {
     public static final long DEFAULT_BALANCE = 1_000_000L;
     private final Map<Long, Long> balances = new ConcurrentHashMap<>();
     private final Map<Long, Integer> refundCallCounts = new ConcurrentHashMap<>();
+    private final java.util.Set<Long> refundFailuresFor = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     public void setBalance(Long userId, Long balance) {
         balances.put(userId, balance);
+    }
+
+    // 여러 참가자를 순서대로 환불하다 한 명이 실패하는 상황을 재현한다.
+    public void failNextRefundFor(Long userId) {
+        refundFailuresFor.add(userId);
     }
 
     public Long getBalance(Long userId) {
@@ -39,6 +46,9 @@ public class FakePointClient implements PointClient {
 
     @Override
     public Long refund(Long userId, Long amount) {
+        if (refundFailuresFor.remove(userId)) {
+            throw new ExternalServiceUnavailableException("point-service");
+        }
         refundCallCounts.merge(userId, 1, Integer::sum);
         long updated = balances.getOrDefault(userId, DEFAULT_BALANCE) + amount;
         balances.put(userId, updated);

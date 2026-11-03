@@ -45,6 +45,7 @@ import com.example.sporty.features.exerciseMatching.domain.enums.MatchParticipan
 import com.example.sporty.features.exerciseMatching.domain.enums.MatchStatus;
 import com.example.sporty.features.exerciseMatching.repository.MatchParticipantRepository;
 import com.example.sporty.features.exerciseMatching.repository.MatchRepository;
+import com.example.sporty.features.exerciseMatching.service.ContributionRefundService;
 import com.example.sporty.features.exerciseMatching.service.MatchService;
 import com.example.sporty.features.exerciseMatching.service.MatchUserGuard;
 
@@ -54,7 +55,7 @@ import io.jsonwebtoken.security.Keys;
 
 // 실제 JWT 필터 -> Controller -> Service -> 오류 응답을 검증하며 Repository만 대체한다.
 @WebMvcTest(MatchController.class)
-@Import({MatchService.class, SecurityConfig.class, JwtAuthenticationFilter.class})
+@Import({MatchService.class, ContributionRefundService.class, SecurityConfig.class, JwtAuthenticationFilter.class})
 @TestPropertySource(properties = "jwt.secret=test-only-signing-secret-with-at-least-32-bytes")
 class MatchLeaveControllerTest {
     @MockitoBean private MatchUserGuard userGuard;

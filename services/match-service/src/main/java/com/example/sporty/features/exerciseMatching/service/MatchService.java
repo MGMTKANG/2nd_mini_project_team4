@@ -67,6 +67,7 @@ public class MatchService {
     private final FacilityClient facilityClient;
     private final PointClient pointClient;
     private final MatchUserGuard userGuard;
+    private final ContributionRefundService contributionRefundService;
 
     // [EM-08] 내 매치 목록 조회
     public List<MyMatchResponseDto> getMyMatches(Long userId) {
@@ -251,13 +252,13 @@ public class MatchService {
     }
 
     // 참가 취소·매치 삭제·회원 탈퇴로 참가 기록이 사라지기 전에, 차감된 참가비가 있으면 환불한다.
+    // 호출자의 트랜잭션과 분리된(REQUIRES_NEW) 트랜잭션에서 커밋한다 - ContributionRefundService 참고.
     private void refundContribution(MatchParticipantEntity participant) {
-        if (participant.getContributionPoints() != null && participant.getContributionPoints() > 0) {
-            pointClient.refund(participant.getUserId(), participant.getContributionPoints());
-            participant.clearContribution();
-        }
+        contributionRefundService.refundContribution(participant);
     }
 
+    // 여러 명을 순서대로 환불하다가 한 명이 실패해도, 각자 독립된 트랜잭션이라 이미
+    // point-service에 커밋된 앞선 환불은 이 메서드가 속한 트랜잭션 롤백에 영향받지 않는다.
     private void refundAllContributions(List<MatchParticipantEntity> participants) {
         for (MatchParticipantEntity participant : participants) {
             refundContribution(participant);
