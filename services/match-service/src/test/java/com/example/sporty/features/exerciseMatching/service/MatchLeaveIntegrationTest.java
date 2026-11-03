@@ -6,6 +6,7 @@ import com.example.sporty.features.exerciseMatching.client.UserClient.UserSummar
 import com.example.sporty.features.exerciseMatching.client.FacilityClient;
 import com.example.sporty.support.FakeClientsConfig;
 import com.example.sporty.support.FakeFacilityClient;
+import com.example.sporty.support.FakePointClient;
 import com.example.sporty.support.FakeUserClient;
 import com.example.sporty.support.MatchDatabaseCleanup;
 
@@ -82,6 +83,9 @@ class MatchLeaveIntegrationTest {
     @Autowired
     private FakeFacilityClient fakeFacilityClient;
 
+    @Autowired
+    private FakePointClient fakePointClient;
+
     private Map<Long, Long> users;
     private String serviceId;
 
@@ -140,6 +144,31 @@ class MatchLeaveIntegrationTest {
         // 순차 중복 요청은 이미 참가 정보가 없으므로 404 예외다.
         assertThatThrownBy(() -> matchService.leaveMatch(matchId, userId(2L)))
                 .isInstanceOf(MatchParticipantNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("크라우드펀딩 매치에서 탈퇴하면 차감된 참가비를 환불받는다")
+    void leaveFundedMatchRefundsContribution() {
+        Long fundedMatchId = new TransactionTemplate(transactionManager).execute(status -> {
+            MatchEntity fundedMatch = matchRepository.save(MatchEntity.builder()
+                    .title("펀딩 탈퇴 테스트").sportType(SportType.FUTSAL).targetPoints(8000L)
+                    .maxParticipant(4).genderGroup(GenderGroup.MIXED).serviceId(serviceId)
+                    .startAt(LocalDateTime.now().plusDays(1)).endAt(LocalDateTime.now().plusDays(1).plusHours(2))
+                    .build());
+            matchParticipantRepository.save(MatchParticipantEntity.builder()
+                    .match(fundedMatch).userId(userId(1L)).role(MatchParticipantRole.OWNER).build());
+            matchParticipantRepository.save(MatchParticipantEntity.builder()
+                    .match(fundedMatch).userId(userId(2L)).role(MatchParticipantRole.PARTICIPANT)
+                    .contributionPoints(2000L).build());
+            return fundedMatch.getId();
+        });
+        fakePointClient.setBalance(userId(2L), 3000L);
+
+        matchService.leaveMatch(fundedMatchId, userId(2L));
+
+        assertThat(fakePointClient.getBalance(userId(2L))).isEqualTo(5000L);
+        assertThat(fakePointClient.getRefundCallCount(userId(2L))).isEqualTo(1);
+        assertThat(matchParticipantRepository.findByMatch_IdAndUserId(fundedMatchId, userId(2L))).isEmpty();
     }
 
     @Test

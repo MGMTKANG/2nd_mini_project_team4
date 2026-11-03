@@ -62,6 +62,9 @@ class MatchServiceTest {
     @Mock
     private FacilityClient facilityClient;
 
+    @Mock
+    private ContributionRefundService contributionRefundService;
+
     @InjectMocks
     private MatchService matchService;
 

@@ -92,6 +92,8 @@ clients:
         url: ${USER_SERVICE_URL:http://localhost:8081}
     facility-service:
         url: ${FACILITY_SERVICE_URL:http://localhost:8083}
+    point-service:
+        url: ${POINT_SERVICE_URL:http://localhost:8085}
 
 ---
 spring:

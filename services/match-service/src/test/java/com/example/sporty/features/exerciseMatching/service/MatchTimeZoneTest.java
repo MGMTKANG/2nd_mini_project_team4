@@ -26,7 +26,8 @@ class MatchTimeZoneTest {
             MatchParticipantRepository participants = mock(MatchParticipantRepository.class);
             UserClient users = mock(UserClient.class);
             FacilityClient facilities = mock(FacilityClient.class);
-            MatchService service = new MatchService(matches, participants, users, facilities, mock(MatchUserGuard.class));
+            MatchService service = new MatchService(matches, participants, users, facilities,
+                    mock(PointClient.class), mock(MatchUserGuard.class), mock(ContributionRefundService.class));
             LocalDateTime start = LocalDateTime.now(ZoneId.of("Asia/Seoul")).minusHours(1);
             MatchEntity match = MatchEntity.builder().id(1L).serviceId("S1").title("서울 경기")
                     .startAt(start).endAt(start.plusHours(2)).maxParticipant(3).build();

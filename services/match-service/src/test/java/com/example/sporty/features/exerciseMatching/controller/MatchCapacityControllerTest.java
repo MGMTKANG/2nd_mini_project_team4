@@ -30,6 +30,7 @@ import com.example.sporty.features.commons.config.SecurityConfig;
 import com.example.sporty.features.commons.filter.JwtAuthenticationFilter;
 import com.example.sporty.features.commons.token.JwtProvider;
 import com.example.sporty.features.exerciseMatching.client.FacilityClient;
+import com.example.sporty.features.exerciseMatching.client.PointClient;
 import com.example.sporty.features.exerciseMatching.client.UserClient;
 import com.example.sporty.features.exerciseMatching.domain.entity.MatchEntity;
 import com.example.sporty.features.exerciseMatching.domain.entity.MatchParticipantEntity;
@@ -37,12 +38,13 @@ import com.example.sporty.features.exerciseMatching.domain.enums.MatchParticipan
 import com.example.sporty.features.exerciseMatching.domain.enums.MatchStatus;
 import com.example.sporty.features.exerciseMatching.repository.MatchParticipantRepository;
 import com.example.sporty.features.exerciseMatching.repository.MatchRepository;
+import com.example.sporty.features.exerciseMatching.service.ContributionRefundService;
 import com.example.sporty.features.exerciseMatching.service.MatchService;
 import com.example.sporty.features.exerciseMatching.service.MatchUserGuard;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 @WebMvcTest(MatchController.class)
-@Import({MatchService.class, SecurityConfig.class, JwtAuthenticationFilter.class})
+@Import({MatchService.class, ContributionRefundService.class, SecurityConfig.class, JwtAuthenticationFilter.class})
 @TestPropertySource(properties = "jwt.secret=test-only-signing-secret-with-at-least-32-bytes")
 class MatchCapacityControllerTest {
     @MockitoBean private MatchUserGuard userGuard;
@@ -56,6 +58,7 @@ class MatchCapacityControllerTest {
     @MockitoBean private MatchParticipantRepository matchParticipantRepository;
     @MockitoBean private UserClient userClient;
     @MockitoBean private FacilityClient facilityClient;
+    @MockitoBean private PointClient pointClient;
 
     @ParameterizedTest
     @ValueSource(ints = {-1, 0, 1})

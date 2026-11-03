@@ -1,0 +1,73 @@
+server:
+    port: 8085
+    shutdown: graceful
+
+spring:
+    application:
+        name: point-service
+    profiles:
+        default: local
+    config:
+        import:
+        - "optional:file:./.env[.properties]"
+        - "optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}"
+
+    lifecycle:
+        timeout-per-shutdown-phase: 20s
+
+    datasource:
+        driver-class-name: org.mariadb.jdbc.Driver
+        url: ${POINT_DB_URL:jdbc:mariadb://localhost:3306/point_db}
+        username: ${POINT_DB_USERNAME:root}
+        password: ${POINT_DB_PASSWORD:}
+
+    jpa:
+        hibernate:
+            ddl-auto: ${POINT_JPA_DDL_AUTO:update}
+        properties:
+            hibernate:
+                "[format_sql]": true
+                dialect: org.hibernate.dialect.MariaDBDialect
+
+    cloud:
+        config:
+            enabled: ${CONFIG_ENABLED:false}
+            request-connect-timeout: ${CONFIG_CONNECT_TIMEOUT_MS:2000}
+            request-read-timeout: ${CONFIG_READ_TIMEOUT_MS:5000}
+
+eureka:
+    client:
+        enabled: ${EUREKA_ENABLED:false}
+        service-url:
+            defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+    instance:
+        prefer-ip-address: true
+
+management:
+    endpoints:
+        web:
+            exposure:
+                include: health,info
+
+jwt:
+    secret: ${JWT_SECRET_KEY}
+
+# 데모용 신규 포인트 계정 초기 잔액 (SAGA 패턴 시연용, 실제 결제 없음)
+point:
+    initial-balance: 10000
+
+---
+spring:
+    config:
+        activate:
+            on-profile: local
+    jpa:
+        show-sql: true
+
+---
+spring:
+    config:
+        activate:
+            on-profile: dev | prod
+    jpa:
+        show-sql: false

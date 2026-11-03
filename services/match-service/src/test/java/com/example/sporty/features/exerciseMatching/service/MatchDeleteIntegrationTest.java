@@ -6,6 +6,7 @@ import com.example.sporty.features.exerciseMatching.client.UserClient.UserSummar
 import com.example.sporty.features.exerciseMatching.client.FacilityClient;
 import com.example.sporty.support.FakeClientsConfig;
 import com.example.sporty.support.FakeFacilityClient;
+import com.example.sporty.support.FakePointClient;
 import com.example.sporty.support.FakeUserClient;
 import com.example.sporty.support.MatchDatabaseCleanup;
 
@@ -17,6 +18,7 @@ import static org.mockito.Mockito.doAnswer;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import javax.sql.DataSource;
 import jakarta.persistence.EntityManager;
 import com.example.sporty.features.exerciseMatching.domain.enums.GenderGroup;
@@ -83,6 +85,9 @@ class MatchDeleteIntegrationTest {
     @Autowired
     private FakeFacilityClient fakeFacilityClient;
 
+    @Autowired
+    private FakePointClient fakePointClient;
+
     private Map<Long, Long> users;
     private String serviceId;
 
@@ -135,6 +140,34 @@ class MatchDeleteIntegrationTest {
         assertThat(matchParticipantRepository.countByMatch_Id(matchId)).isZero();
         assertThat(matchParticipantRepository.findAllById(participantIds)).isEmpty();
         assertOtherMatchIsUnchanged();
+    }
+
+    @Test
+    @DisplayName("크라우드펀딩 매치 삭제 시 참가비를 낸 참가자 전원에게 환불한다")
+    void deletingFundedMatchRefundsAllContributions() {
+        AtomicReference<Long> fundedMatchId = new AtomicReference<>();
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            MatchEntity fundedMatch = matchRepository.save(MatchEntity.builder()
+                    .title("펀딩 매치").sportType(SportType.FUTSAL).targetPoints(9000L)
+                    .maxParticipant(3).genderGroup(GenderGroup.MIXED).serviceId(serviceId)
+                    .startAt(LocalDateTime.now().plusDays(1)).endAt(LocalDateTime.now().plusDays(1).plusHours(2))
+                    .build());
+            fundedMatchId.set(fundedMatch.getId());
+            matchParticipantRepository.saveAll(List.of(
+                    MatchParticipantEntity.builder().match(fundedMatch).userId(userId(1L))
+                            .role(MatchParticipantRole.OWNER).contributionPoints(3000L).build(),
+                    MatchParticipantEntity.builder().match(fundedMatch).userId(userId(2L))
+                            .role(MatchParticipantRole.PARTICIPANT).contributionPoints(3000L).build()));
+        });
+        fakePointClient.setBalance(userId(1L), 7000L);
+        fakePointClient.setBalance(userId(2L), 7000L);
+
+        matchService.deleteMatch(fundedMatchId.get(), userId(1L));
+
+        assertThat(fakePointClient.getBalance(userId(1L))).isEqualTo(10000L);
+        assertThat(fakePointClient.getBalance(userId(2L))).isEqualTo(10000L);
+        assertThat(fakePointClient.getRefundCallCount(userId(1L))).isEqualTo(1);
+        assertThat(fakePointClient.getRefundCallCount(userId(2L))).isEqualTo(1);
     }
 
     @ParameterizedTest

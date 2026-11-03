@@ -56,6 +56,10 @@ public class MatchCreateRequestDto {
     @NotNull(message = "성별 구성은 필수입니다.")
     private GenderGroup genderGroup;
 
+    // 크라우드펀딩 목표 금액(시설 예약 총비용). 선택 입력이며, 입력 시에만 1 이상의 정수여야 한다.
+    @Positive(message = "시설 예약 비용은 1 이상의 정수여야 합니다.")
+    private Long targetPoints;
+
     @JsonIgnore
     @AssertTrue(message = "종료 시간은 시작 시간보다 이후여야 합니다.")
     public boolean isTimeRangeValid() {
@@ -75,6 +79,7 @@ public class MatchCreateRequestDto {
             .serviceId(facilityServiceId)
             .sportType(this.getSportType())
             .genderGroup(this.getGenderGroup())
+            .targetPoints(this.getTargetPoints())
             .build();
     }
 }

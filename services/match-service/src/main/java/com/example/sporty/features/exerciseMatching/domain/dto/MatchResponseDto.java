@@ -48,6 +48,9 @@ public class MatchResponseDto {
     @JsonProperty("isFree")
     private Boolean isFree;
 
+    // 크라우드펀딩 목표 금액. 값이 없으면(null) 프론트가 펀딩 UI 자체를 숨긴다.
+    private Long targetPoints;
+
     // 시설 정보를 받지 못한 매치도 목록에서 빠지지 않도록 시설 항목만 null로 둔다.
     public static MatchResponseDto toResponseDto(MatchEntity entity, long participantCount,
             FacilityServiceSummary facility) {
@@ -60,6 +63,7 @@ public class MatchResponseDto {
             .reservationDeadlineAt(facility == null ? null : facility.reservationDeadlineAt())
             .numCurrentParticipant(Math.toIntExact(participantCount))
             .maxParticipant(entity.getMaxParticipant())
+            .targetPoints(entity.getTargetPoints())
             .status(entity.getStatus())
             .skillLevel(entity.getSkillLevel())
             .sportType(entity.getSportType())

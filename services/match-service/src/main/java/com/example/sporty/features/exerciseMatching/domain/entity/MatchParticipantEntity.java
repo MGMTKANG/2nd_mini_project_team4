@@ -62,4 +62,13 @@ public class MatchParticipantEntity {
     @JdbcTypeCode(SqlTypes.VARCHAR)
     @Column(name = "role", length = 20, nullable = false)
     private MatchParticipantRole role;
+
+    // 참가 시점에 차감된 포인트(1인당 참가비). 펀딩 실패 시 이 금액만큼 환불한다. 펀딩 없는 매치는 null이다.
+    @Column(name = "contribution_points")
+    private Long contributionPoints;
+
+    // 환불 완료 후 중복 환불을 막기 위해 호출한다.
+    public void clearContribution() {
+        this.contributionPoints = null;
+    }
 }

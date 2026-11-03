@@ -4,6 +4,7 @@ import com.example.sporty.features.exerciseMatching.client.UserClient;
 import com.example.sporty.features.exerciseMatching.client.UserClient.ProfileSummary;
 import com.example.sporty.features.exerciseMatching.client.UserClient.UserSummary;
 import com.example.sporty.features.exerciseMatching.client.FacilityClient;
+import com.example.sporty.features.exerciseMatching.client.PointClient;
 import com.example.sporty.support.FakeClientsConfig;
 import com.example.sporty.support.FakeFacilityClient;
 import com.example.sporty.support.FakeUserClient;
@@ -58,6 +59,7 @@ import com.example.sporty.features.exerciseMatching.domain.enums.MatchParticipan
 import com.example.sporty.features.exerciseMatching.domain.enums.MatchStatus;
 import com.example.sporty.features.exerciseMatching.repository.MatchParticipantRepository;
 import com.example.sporty.features.exerciseMatching.repository.MatchRepository;
+import com.example.sporty.features.exerciseMatching.service.ContributionRefundService;
 import com.example.sporty.features.exerciseMatching.service.MatchService;
 import com.example.sporty.features.exerciseMatching.service.MatchUserGuard;
 
@@ -66,7 +68,7 @@ import io.jsonwebtoken.security.Keys;
 
 // JWT 필터, Controller, Service, 예외 처리기를 사용하고 DB만 대체한다.
 @WebMvcTest(MatchController.class)
-@Import({MatchService.class, SecurityConfig.class, JwtAuthenticationFilter.class})
+@Import({MatchService.class, ContributionRefundService.class, SecurityConfig.class, JwtAuthenticationFilter.class})
 @TestPropertySource(properties = "jwt.secret=test-only-signing-secret-with-at-least-32-bytes")
 class MatchJoinControllerTest {
     @MockitoBean private MatchUserGuard userGuard;
@@ -88,6 +90,9 @@ class MatchJoinControllerTest {
 
     @MockitoBean
     private FacilityClient facilityClient;
+
+    @MockitoBean
+    private PointClient pointClient;
 
     @Test
     @DisplayName("[EM06-001] 로그인 사용자를 PARTICIPANT로 저장하고 201과 참가 정보를 반환한다")
