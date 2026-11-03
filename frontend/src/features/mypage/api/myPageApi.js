@@ -21,3 +21,6 @@ export const saveProfile = form => api.put('/api/profiles/me', {
 
 // [USR-04] axios.delete의 요청 본문은 두 번째 인자의 data에 담는다.
 export const withdrawUser = password => api.delete('/api/users/me', { data: { password } });
+
+// 크라우드펀딩 포인트 잔액 조회. 로그인 사용자의 토큰으로 확인하며 userId는 보내지 않는다.
+export const loadMyPoints = ({ signal }) => api.get('/api/points/me', { signal }).then(({ data }) => data.balance);

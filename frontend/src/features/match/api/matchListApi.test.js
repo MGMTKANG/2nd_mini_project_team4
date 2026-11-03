@@ -56,6 +56,14 @@ test('requires confirmed creation of participation', async () => {
   expect(matchRequestError({ response: { status: 501 } }, 'join')).toContain('준비 중');
 });
 
+test('409 응답은 code로 포인트 부족과 중복 참가를 구분한다', () => {
+  expect(matchRequestError({ response: { status: 409, data: { code: 'INSUFFICIENT_POINTS' } } }, 'join'))
+    .toContain('포인트가 부족');
+  expect(matchRequestError({ response: { status: 409, data: { code: 'MATCH_ALREADY_JOINED' } } }, 'join'))
+    .toContain('이미 참가 중');
+  expect(matchRequestError({ response: { status: 409 } }, 'join')).toContain('이미 참가 중');
+});
+
 test('preview IDs cannot reach the API', async () => {
   await expect(requestMatchParticipation('preview-1')).rejects.toThrow('매치 번호');
   expect(api.post).not.toHaveBeenCalled();
