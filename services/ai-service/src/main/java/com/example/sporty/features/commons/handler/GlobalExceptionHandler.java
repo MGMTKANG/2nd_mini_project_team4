@@ -16,6 +16,7 @@ import org.springframework.web.client.RestClientException;
 import com.example.sporty.features.commons.exception.ExternalServiceUnavailableException;
 import com.example.sporty.features.commons.exception.ai.AiDraftException;
 import com.example.sporty.features.commons.exception.ai.AiSearchException;
+import com.example.sporty.features.commons.exception.users.UserNotFoundException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -74,6 +75,16 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .body(ErrorResponse.builder()
                         .code("EXTERNAL_SERVICE_UNAVAILABLE")
+                        .message(e.getMessage())
+                        .build());
+    }
+
+    // 로그인한 회원을 user-service에서 찾지 못함(탈퇴 등) → 404 (match-service와 같은 코드)
+    @ExceptionHandler(UserNotFoundException.class)
+    public ResponseEntity<ErrorResponse> handleUserNotFound(UserNotFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ErrorResponse.builder()
+                        .code("USER_NOT_FOUND")
                         .message(e.getMessage())
                         .build());
     }

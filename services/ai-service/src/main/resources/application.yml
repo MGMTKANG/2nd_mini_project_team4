@@ -47,3 +47,5 @@ jwt:
 clients:
     match-service:
         url: ${MATCH_SERVICE_URL:http://localhost:8082}
+    user-service:
+        url: ${USER_SERVICE_URL:http://localhost:8081}
