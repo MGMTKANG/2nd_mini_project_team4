@@ -1,6 +1,7 @@
 -- 빈 match_db에 적용하는 현재 엔티티 4개 테이블의 전체 스키마.
 -- 적용 후 MATCH_JPA_DDL_AUTO=validate로 기동한다. 기존 테이블을 변경하지 않는다.
--- Saga/포인트 초안 컬럼은 현재 엔티티에 구현되지 않아 포함하지 않는다.
+-- target_points/contribution_points는 2026-11-03 SAGA 데모(point-service 연동)로 추가됨.
+-- 기존에 이 파일로 이미 match_db를 만들었다면 2026-11-03-match-points-saga.sql을 추가로 적용한다.
 CREATE TABLE IF NOT EXISTS `match` (
     id BIGINT NOT NULL AUTO_INCREMENT,
     title VARCHAR(50) NOT NULL,
@@ -15,10 +16,12 @@ CREATE TABLE IF NOT EXISTS `match` (
     sport_type VARCHAR(15) NOT NULL,
     gender_group VARCHAR(10) NOT NULL,
     service_id BIGINT NOT NULL,
+    target_points BIGINT NULL,
     PRIMARY KEY (id),
     CONSTRAINT ck_match_valid_fields CHECK (
         CHAR_LENGTH(TRIM(title)) > 0 AND max_participant >= 1
         AND end_at > start_at AND service_id > 0
+        AND (target_points IS NULL OR target_points > 0)
     )
 ) ENGINE=InnoDB;
 
@@ -30,6 +33,7 @@ CREATE TABLE IF NOT EXISTS match_participant (
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP NOT NULL,
     role VARCHAR(20) NOT NULL,
+    contribution_points BIGINT NULL,
     PRIMARY KEY (match_participant_id),
     CONSTRAINT uk_match_participant_match_user UNIQUE (match_id, user_id),
     CONSTRAINT fk_match_participant_match FOREIGN KEY (match_id) REFERENCES `match` (id)

@@ -121,6 +121,7 @@ public class MatchService {
     }
 
     private void removeParticipantAndReopenRecruitment(MatchEntity match, MatchParticipantEntity participant) {
+        refundContribution(participant);
         matchParticipantRepository.delete(participant);
         // 같은 트랜잭션의 삭제를 반영한 인원으로 확인하며, 참여 API와 매치 잠금을 공유한다.
         // CLOSED 상태에서 탈퇴했을 때, 매칭 시작 전 + 인원 제한 수 보다 적으면 다시 RECRUITING 상태로 변경
@@ -147,6 +148,7 @@ public class MatchService {
             var participation = matchParticipantRepository.findByMatch_IdAndUserId(matchId, userId);
             if (participation.isEmpty()) continue;
             if (participation.get().getRole() == MatchParticipantRole.OWNER) {
+                refundAllContributions(matchParticipantRepository.findAllByMatch_IdOrderByIdAsc(matchId));
                 matchParticipantRepository.deleteAllByMatch_Id(matchId);
                 matchRepository.delete(match);
             } else {
@@ -229,17 +231,23 @@ public class MatchService {
         MatchEntity match = matchRepository.findByIdForUpdate(matchId)
                 .orElseThrow(MatchNotFoundException::new);
 
-        List<MatchParticipantEntity> participants =
-                matchParticipantRepository.findAllByMatch_IdOrderByIdAsc(matchId);
-
-        for (MatchParticipantEntity participant : participants) {
-            if (participant.getContributionPoints() != null && participant.getContributionPoints() > 0) {
-                pointClient.refund(participant.getUserId(), participant.getContributionPoints());
-                participant.clearContribution();
-            }
-        }
+        refundAllContributions(matchParticipantRepository.findAllByMatch_IdOrderByIdAsc(matchId));
 
         match.closeRecruitment();
+    }
+
+    // 참가 취소·매치 삭제·회원 탈퇴로 참가 기록이 사라지기 전에, 차감된 참가비가 있으면 환불한다.
+    private void refundContribution(MatchParticipantEntity participant) {
+        if (participant.getContributionPoints() != null && participant.getContributionPoints() > 0) {
+            pointClient.refund(participant.getUserId(), participant.getContributionPoints());
+            participant.clearContribution();
+        }
+    }
+
+    private void refundAllContributions(List<MatchParticipantEntity> participants) {
+        for (MatchParticipantEntity participant : participants) {
+            refundContribution(participant);
+        }
     }
 
     // EM-05: 참가 기록과 매치를 한 트랜잭션에서 삭제한다.
@@ -252,7 +260,8 @@ public class MatchService {
                 .filter(participant -> participant.getRole() == MatchParticipantRole.OWNER)
                 .orElseThrow(MatchDeleteForbiddenException::new);
 
-        // 외래 키로 연결된 참가 기록을 먼저 삭제한 뒤 매치를 삭제한다.
+        // 외래 키로 연결된 참가 기록을 먼저 삭제한 뒤 매치를 삭제한다. 삭제 전에 차감된 참가비를 환불한다.
+        refundAllContributions(matchParticipantRepository.findAllByMatch_IdOrderByIdAsc(matchId));
         matchParticipantRepository.deleteAllByMatch_Id(matchId);
         matchRepository.delete(match);
     }
