@@ -75,7 +75,7 @@ class MatchModifyIntegrationTest {
     void setUp() {
         MatchDatabaseCleanup.clear(transactionManager, dataSource);
         users = MatchUserFixtures.create(fakeUserClient, 3);
-        serviceId = FacilityFixtures.create(fakeFacilityClient, FacilityFixtures.newServiceId()).serviceId();
+        serviceId = FacilityFixtures.create(fakeFacilityClient, FacilityFixtures.newServiceId()).id();
     }
 
     @AfterEach

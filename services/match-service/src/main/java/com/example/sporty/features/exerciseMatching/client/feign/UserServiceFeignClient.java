@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import com.example.sporty.features.exerciseMatching.client.UserClient.ProfileSummary;
 import com.example.sporty.features.exerciseMatching.client.UserClient.UserSummary;
 
-// 유저 서비스 내부 API 제안안. 경로와 응답 형식은 유저 서비스 담당자와 확정해야 한다.
+// 유저 서비스 내부 API (user-service InternalUserController).
 @FeignClient(name = "user-service", url = "${clients.user-service.url:}")
 public interface UserServiceFeignClient {
 

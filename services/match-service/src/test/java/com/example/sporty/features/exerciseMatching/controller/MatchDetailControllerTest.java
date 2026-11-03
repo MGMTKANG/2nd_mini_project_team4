@@ -201,13 +201,16 @@ class MatchDetailControllerTest {
         Long userId = 2147483649L;
         Long serviceId = 2147483650L;
         when(matchRepository.findById(matchId)).thenReturn(Optional.of(MatchEntity.builder()
-                .id(matchId).serviceId(serviceId).build()));
+                .id(matchId).serviceId("S" + serviceId).build()));
         when(matchParticipantRepository.findAllByMatch_IdOrderByIdAsc(matchId)).thenReturn(List.of(
                 MatchParticipantEntity.builder().id(2147483651L)
                         .userId(userId)
                         .role(MatchParticipantRole.OWNER).build()));
         when(userClient.findProfiles(List.of(userId))).thenReturn(List.of(
                 new ProfileSummary(userId, 401L, "생성자", null)));
+
+        when(facilityClient.findService("S" + serviceId))
+                .thenReturn(Optional.of(FacilityFixtures.service(serviceId, true)));
 
         mvc.perform(get("/api/matches/{matchId}", matchId)
                         .header("Authorization", "Bearer " +
@@ -226,7 +229,7 @@ class MatchDetailControllerTest {
                 .id(101L).title("주말 풋살 모집").description("함께 풋살하실 분")
                 .startAt(LocalDateTime.of(2026, 9, 26, 19, 0))
                 .endAt(LocalDateTime.of(2026, 9, 26, 21, 0))
-                .maxParticipant(10).sportType(SportType.FUTSAL).genderGroup(GenderGroup.MIXED).serviceId(7L).build()));
+                .maxParticipant(10).sportType(SportType.FUTSAL).genderGroup(GenderGroup.MIXED).serviceId("S7").build()));
         when(matchParticipantRepository.findAllByMatch_IdOrderByIdAsc(101L)).thenReturn(List.of(
                 MatchParticipantEntity.builder().id(11L).userId(1L)
                         .role(MatchParticipantRole.OWNER).build(),
@@ -235,7 +238,7 @@ class MatchDetailControllerTest {
         when(userClient.findProfiles(List.of(1L, 2L))).thenReturn(List.of(
                 new ProfileSummary(1L, 401L, "생성자", "https://example.com/owner.png"),
                 new ProfileSummary(2L, 402L, "참가자", null)));
-        when(facilityClient.findService(7L)).thenReturn(Optional.of(FacilityFixtures.service(7L, true)));
+        when(facilityClient.findService("S7")).thenReturn(Optional.of(FacilityFixtures.service(7L, true)));
     }
 
     @ParameterizedTest(name = "remote={0}, facility={1}: {3}")
@@ -259,10 +262,10 @@ class MatchDetailControllerTest {
                     .thenReturn(Optional.of(new UserSummary(1L, remoteUser)));
         }
         switch (remoteFacility) {
-            case "MISSING" -> when(facilityClient.findService(7L)).thenReturn(Optional.empty());
-            case "ERROR" -> when(facilityClient.findService(7L))
+            case "MISSING" -> when(facilityClient.findServiceById(7L)).thenReturn(Optional.empty());
+            case "ERROR" -> when(facilityClient.findServiceById(7L))
                     .thenThrow(new ExternalServiceUnavailableException("facility-service"));
-            default -> when(facilityClient.findService(7L))
+            default -> when(facilityClient.findServiceById(7L))
                     .thenReturn(Optional.of(FacilityFixtures.service(7L, true)));
         }
 
@@ -276,7 +279,7 @@ class MatchDetailControllerTest {
         var order = inOrder(userClient, facilityClient, userGuard);
         order.verify(userClient).findUser(1L);
         if ("ACTIVE".equals(remoteUser)) {
-            order.verify(facilityClient).findService(7L);
+            order.verify(facilityClient).findServiceById(7L);
             if ("NORMAL".equals(remoteFacility)) {
                 order.verify(userGuard).requireActive(1L);
             } else {
@@ -292,7 +295,7 @@ class MatchDetailControllerTest {
     @EnumSource(GenderGroup.class)
     void creationPassesGenderGroupToPersistence(GenderGroup genderGroup) throws Exception {
         when(userClient.findUser(1L)).thenReturn(Optional.of(new UserSummary(1L, "ACTIVE")));
-        when(facilityClient.findService(7L)).thenReturn(Optional.of(FacilityFixtures.service(7L, true)));
+        when(facilityClient.findServiceById(7L)).thenReturn(Optional.of(FacilityFixtures.service(7L, true)));
         when(matchRepository.save(any(MatchEntity.class))).thenAnswer(invocation ->
                 MatchEntity.builder().id(101L).genderGroup(invocation.<MatchEntity>getArgument(0).getGenderGroup()).build());
 
@@ -302,7 +305,7 @@ class MatchDetailControllerTest {
                 .content(createRequest(", \"genderGroup\": \"" + genderGroup.name() + "\"")))
                 .andExpect(status().isCreated());
         verify(matchRepository).save(argThat(match -> match.getGenderGroup() == genderGroup
-                && match.getServiceId().equals(7L)));
+                && match.getServiceId().equals("S7")));
     }
 
     @ParameterizedTest
@@ -319,14 +322,14 @@ class MatchDetailControllerTest {
     @EnumSource(GenderGroup.class)
     void searchBindsGenderGroupAndReturnsIt(GenderGroup genderGroup) throws Exception {
         when(matchRepository.searchMatches(
-                null, false, List.of(0L), null, null, null, null, null, null, null,
+                null, false, List.of(""), null, null, null, null, null, null, null,
                 genderGroup, null)) // 지역·무료 여부 미지정
-                .thenReturn(List.of(MatchEntity.builder().id(101L).genderGroup(genderGroup).serviceId(7L).build()));
+                .thenReturn(List.of(MatchEntity.builder().id(101L).genderGroup(genderGroup).serviceId("S7").build()));
         mvc.perform(get("/api/matches").param("genderGroup", genderGroup.name()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].genderGroup").value(genderGroup.name()));
         verify(matchRepository).searchMatches(
-                null, false, List.of(0L), null, null, null, null, null, null, null,
+                null, false, List.of(""), null, null, null, null, null, null, null,
                 genderGroup, null); // 지역·무료 여부 미지정
     }
 
@@ -334,7 +337,7 @@ class MatchDetailControllerTest {
     void searchAllowsOmittedGenderGroup() throws Exception {
         mvc.perform(get("/api/matches")).andExpect(status().isOk());
         verify(matchRepository).searchMatches(
-                null, false, List.of(0L), null, null, null, null, null, null, null,
+                null, false, List.of(""), null, null, null, null, null, null, null,
                 null, null); // 지역·무료 여부 미지정이면 시설 서비스로 거르지 않는다
     }
 
@@ -348,13 +351,13 @@ class MatchDetailControllerTest {
     @ParameterizedTest
     @ValueSource(booleans = {true, false})
     void searchBindsAndSerializesBooleanIsFree(boolean isFree) throws Exception {
-        when(facilityClient.searchServiceIds("강남구", isFree)).thenReturn(List.of(7L));
-        when(facilityClient.findServices(List.of(7L))).thenReturn(List.of(FacilityFixtures.service(7L, isFree)));
+        when(facilityClient.searchServiceIds("강남구", isFree)).thenReturn(List.of("S7"));
+        when(facilityClient.findServices(List.of("S7"))).thenReturn(List.of(FacilityFixtures.service(7L, isFree)));
         when(matchRepository.searchMatches(
-                null, true, List.of(7L), null, null, null, null, null, null, null,
+                null, true, List.of("S7"), null, null, null, null, null, null, null,
                 null, null))
                 .thenReturn(List.of(MatchEntity.builder().id(101L)
-                        .serviceId(7L).build()));
+                        .serviceId("S7").build()));
 
         mvc.perform(get("/api/matches").param("region", "강남구")
                         .param("isFree", Boolean.toString(isFree)))

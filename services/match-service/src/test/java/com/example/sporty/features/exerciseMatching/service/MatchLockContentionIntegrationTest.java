@@ -80,7 +80,7 @@ class MatchLockContentionIntegrationTest {
     void setUp() {
         transactions = new TransactionTemplate(transactionManager);
         users = MatchUserFixtures.create(fakeUserClient, 3);
-        serviceId = FacilityFixtures.create(fakeFacilityClient, FacilityFixtures.newServiceId()).serviceId();
+        serviceId = FacilityFixtures.create(fakeFacilityClient, FacilityFixtures.newServiceId()).id();
     }
 
     @AfterEach

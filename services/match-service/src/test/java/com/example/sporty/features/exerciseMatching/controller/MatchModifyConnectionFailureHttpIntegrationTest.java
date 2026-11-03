@@ -99,7 +99,7 @@ class MatchModifyConnectionFailureHttpIntegrationTest {
         LocalDateTime originalStart = LocalDateTime.now().plusDays(1).withNano(0);
         Long matchId = new TransactionTemplate(transactionManager).execute(transaction -> {
             MatchEntity match = matchRepository.save(MatchEntity.builder()
-                    .title("기존 제목").description("기존 설명").serviceId(1L)
+                    .title("기존 제목").description("기존 설명").serviceId("S1")
                     .startAt(originalStart).endAt(originalStart.plusHours(2)).maxParticipant(3)
                     .sportType(SportType.FUTSAL).genderGroup(GenderGroup.MIXED).build());
             participantRepository.saveAll(List.of(
@@ -127,7 +127,7 @@ class MatchModifyConnectionFailureHttpIntegrationTest {
                         .contentType("application/json").content(objectMapper.writeValueAsBytes(request)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.title").value(request.getTitle()))
-                .andExpect(jsonPath("$.serviceId").value(1))
+                .andExpect(jsonPath("$.serviceId").value(nullValue()))
                 .andExpect(jsonPath("$.serviceName").value(nullValue()))
                 .andExpect(jsonPath("$.locationName").value(nullValue()))
                 .andExpect(jsonPath("$.region").value(nullValue()))
@@ -149,6 +149,7 @@ class MatchModifyConnectionFailureHttpIntegrationTest {
         assertThat(failure.get()).isNotNull().hasCauseInstanceOf(RetryableException.class)
                 .hasRootCauseInstanceOf(ConnectException.class);
         MatchEntity stored = matchRepository.findById(matchId).orElseThrow();
+        assertThat(stored.getServiceId()).isEqualTo("S1");
         assertThat(stored.getTitle()).isEqualTo(request.getTitle());
         assertThat(stored.getDescription()).isEqualTo(request.getDescription());
         assertThat(stored.getStartAt()).isEqualTo(request.getStartAt());

@@ -9,15 +9,18 @@ import org.springframework.web.bind.annotation.RequestParam;
 
 import com.example.sporty.features.exerciseMatching.client.FacilityClient.FacilityServiceSummary;
 
-// 체육시설 서비스 내부 API 제안안. 경로와 응답 형식은 체육시설 서비스 담당자와 확정해야 한다.
+// 체육시설 서비스 내부 API (facility-service FacilityInternalController).
 @FeignClient(name = "facility-service", url = "${clients.facility-service.url:}")
 public interface FacilityServiceFeignClient {
 
     @GetMapping("/internal/facility-services")
-    List<FacilityServiceSummary> getServices(@RequestParam("ids") Collection<Long> serviceIds);
+    List<FacilityServiceSummary> getServices(@RequestParam("ids") Collection<String> serviceIds);
+
+    @GetMapping("/internal/facility-services/by-id")
+    List<FacilityServiceSummary> getServicesByIds(@RequestParam("ids") Collection<Long> ids);
 
     @GetMapping("/internal/facility-services/ids")
-    List<Long> searchServiceIds(
+    List<String> searchServiceIds(
             @RequestParam(value = "region", required = false) String region,
             @RequestParam(value = "isFree", required = false) Boolean isFree);
 }
