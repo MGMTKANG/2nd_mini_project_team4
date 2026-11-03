@@ -8,8 +8,10 @@ import org.springframework.stereotype.Component;
 import com.example.sporty.features.ai.client.MatchClient;
 import com.example.sporty.features.commons.exception.ExternalServiceUnavailableException;
 import com.example.sporty.features.commons.exception.ai.AiSearchException;
+import com.example.sporty.features.commons.exception.users.UserNotFoundException;
 import com.example.sporty.features.exerciseMatching.domain.dto.MatchResponseDto;
 import com.example.sporty.features.exerciseMatching.domain.dto.MatchSearchRequestDto;
+import com.example.sporty.features.exerciseMatching.domain.dto.MyMatchResponseDto;
 
 import feign.FeignException;
 import lombok.RequiredArgsConstructor;
@@ -36,6 +38,24 @@ public class FeignMatchClient implements MatchClient {
         } catch (FeignException.BadRequest e) {
             // AI가 뽑은 조건을 match-service가 거절한 경우 (예: 종료 일시가 시작 일시보다 앞)
             throw new AiSearchException(INVALID_CONDITION_MESSAGE);
+        } catch (FeignException e) {
+            // 매치 서비스가 꺼져 있거나 오류를 낸 경우
+            throw new ExternalServiceUnavailableException(SERVICE_NAME, e);
+        }
+    }
+
+    @Override
+    public List<MyMatchResponseDto> findMyMatches(String authorization) {
+        try {
+            List<MyMatchResponseDto> myMatches = matchServiceFeignClient.findMyMatches(authorization);
+            // 응답 모양이 약속과 다르면 연결 실패와 같게 본다
+            if (myMatches == null || myMatches.stream().anyMatch(Objects::isNull)) {
+                throw new ExternalServiceUnavailableException(SERVICE_NAME);
+            }
+            return myMatches;
+        } catch (FeignException.NotFound e) {
+            // match-service가 회원을 찾지 못한 경우 (탈퇴 등)
+            throw new UserNotFoundException();
         } catch (FeignException e) {
             // 매치 서비스가 꺼져 있거나 오류를 낸 경우
             throw new ExternalServiceUnavailableException(SERVICE_NAME, e);
