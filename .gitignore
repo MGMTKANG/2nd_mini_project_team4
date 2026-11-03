@@ -4,5 +4,16 @@
 .env.*
 !.env.example
 
+# local-only working notes, not for commit
+docs/facility-service-plan.md
+docs/facility-service-issues.md
+docs/facility-frontend-confirmation-plan.md
+docs/facility-frontend-crowdfunding-plan.md
+docs/SESSION-HANDOFF.md
+docs/match-crowdfunding-erd-spec.md
+
+# local dev dumps
+*.rdb
+
 ## macOS ##
 .DS_Store
