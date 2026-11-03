@@ -87,7 +87,7 @@ export default function useMatchList(preview = false) {
       if (request.signal.aborted) return;
       setRecommendationError(matchRequestError(error, 'recommendation')); setRecommendationStatus('error');
     }
-  }, []);
+  }, [preview]);
 
   useEffect(() => {
     mounted.current = true;
