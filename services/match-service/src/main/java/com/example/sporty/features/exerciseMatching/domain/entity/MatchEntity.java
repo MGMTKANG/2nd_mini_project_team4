@@ -31,7 +31,7 @@ import lombok.ToString;
 
 @Entity
 @Table(name = "`match`")
-@Check(name = "ck_match_valid_fields", constraints = "CHAR_LENGTH(TRIM(title)) > 0 AND max_participant >= 1 AND end_at > start_at AND CHAR_LENGTH(TRIM(service_id)) > 0")
+@Check(name = "ck_match_valid_fields", constraints = "CHAR_LENGTH(TRIM(title)) > 0 AND max_participant >= 1 AND end_at > start_at AND CHAR_LENGTH(TRIM(service_id)) > 0 AND (target_points IS NULL OR target_points > 0)")
 @Builder 
 @Getter 
 @ToString 

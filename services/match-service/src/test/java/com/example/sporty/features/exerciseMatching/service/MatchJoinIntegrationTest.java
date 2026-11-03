@@ -336,7 +336,7 @@ class MatchJoinIntegrationTest {
         return new TransactionTemplate(transactionManager).execute(status -> {
             MatchEntity match = matchRepository.save(MatchEntity.builder()
                     .title("펀딩 참여 테스트").sportType(SportType.FUTSAL).maxParticipant(maxParticipant)
-                    .serviceId(serviceId).genderGroup(GenderGroup.MIXED).targetPoints(targetPoints)
+                    .serviceId("S" + serviceId).genderGroup(GenderGroup.MIXED).targetPoints(targetPoints)
                     .status(MatchStatus.RECRUITING).startAt(LocalDateTime.now().plusDays(1))
                     .endAt(LocalDateTime.now().plusDays(1).plusHours(2)).build());
             matchParticipantRepository.save(MatchParticipantEntity.builder()

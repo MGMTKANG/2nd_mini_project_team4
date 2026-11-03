@@ -16,10 +16,12 @@ CREATE TABLE IF NOT EXISTS `match` (
     sport_type VARCHAR(15) NOT NULL,
     gender_group VARCHAR(10) NOT NULL,
     service_id VARCHAR(50) NOT NULL,
+    target_points BIGINT NULL,
     PRIMARY KEY (id),
     CONSTRAINT ck_match_valid_fields CHECK (
         CHAR_LENGTH(TRIM(title)) > 0 AND max_participant >= 1
         AND end_at > start_at AND CHAR_LENGTH(TRIM(service_id)) > 0
+        AND (target_points IS NULL OR target_points > 0)
     )
 ) ENGINE=InnoDB;
 

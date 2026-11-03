@@ -533,6 +533,7 @@ public class MatchService {
                 .sportType(match.getSportType())
                 .genderGroup(match.getGenderGroup())
                 .serviceId(facility == null ? null : facility.id())
+                .targetPoints(match.getTargetPoints())
                 .participants(participantSummaries)
                 .isOwner(isOwner)
                 .isParticipant(isParticipant)
