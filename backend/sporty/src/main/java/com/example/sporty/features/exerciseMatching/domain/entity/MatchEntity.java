@@ -36,7 +36,7 @@ import lombok.ToString;
 
 @Entity
 @Table(name = "`match`")
-@Check(name = "ck_match_valid_fields", constraints = "CHAR_LENGTH(TRIM(title)) > 0 AND max_participant >= 1 AND end_at > start_at AND service_id > 0")
+@Check(name = "ck_match_valid_fields", constraints = "CHAR_LENGTH(TRIM(title)) > 0 AND max_participant >= 1 AND end_at > start_at AND service_id > 0 AND (target_points IS NULL OR target_points > 0)")
 @Builder 
 @Getter 
 @ToString 
@@ -107,6 +107,10 @@ public class MatchEntity {
             foreignKey = @ForeignKey(name = "fk_match_service"))
     @ToString.Exclude
     private ServiceEntity service;
+
+    // 크라우드펀딩 목표 금액(시설 예약 총비용). 선택 입력이라 기존 매치는 null이다.
+    @Column(name = "target_points")
+    private Long targetPoints;
 
     // Match의 Status를 CLOSED 로 변경하는 메서드
     public void closeRecruitment() {
