@@ -15,6 +15,7 @@
 | `/api/matches/**` | match-service | `MATCH_SERVICE_URL` (`http://localhost:8082`) |
 | `/api/services/**` | facility-service | `FACILITY_SERVICE_URL` (`http://localhost:8083`) |
 | `/api/ai/**` | ai-service | `AI_SERVICE_URL` (`http://localhost:8084`) |
+| `/api/points/**` | point-service | `POINT_SERVICE_URL` (`http://localhost:8085`) |
 
 - `/internal/**`은 **라우팅 대상에서 제외** (서비스 간 내부 호출 전용).
 - 환경별 URI 형식
@@ -45,6 +46,7 @@ USER_SERVICE_URL=lb://user-service \
 MATCH_SERVICE_URL=lb://match-service \
 FACILITY_SERVICE_URL=lb://facility-service \
 AI_SERVICE_URL=lb://ai-service \
+POINT_SERVICE_URL=lb://point-service \
 ./gradlew bootRun
 ```
 
@@ -57,7 +59,7 @@ AI_SERVICE_URL=lb://ai-service \
 ## 라우팅 확인 (대상 서비스 미기동 상태)
 
 ```bash
-for p in /actuator/health /api/users/me /api/matches /api/services /api/ai/matches /internal/users/1; do
+for p in /actuator/health /api/users/me /api/matches /api/services /api/ai/matches /api/points/me /internal/users/1; do
   printf "%-22s -> " "$p"; curl -s -o /dev/null -w "%{http_code}\n" "http://localhost:8000$p"
 done
 ```

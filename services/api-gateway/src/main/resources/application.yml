@@ -37,6 +37,10 @@ spring:
               uri: ${AI_SERVICE_URL:http://localhost:8084}
               predicates:
                 - Path=/api/ai/**
+            - id: point-service
+              uri: ${POINT_SERVICE_URL:http://localhost:8085}
+              predicates:
+                - Path=/api/points/**
 
 eureka:
   client:
