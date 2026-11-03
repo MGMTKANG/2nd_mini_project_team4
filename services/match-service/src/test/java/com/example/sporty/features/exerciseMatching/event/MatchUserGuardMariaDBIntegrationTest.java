@@ -52,7 +52,7 @@ class MatchUserGuardMariaDBIntegrationTest extends MariaDBIntegrationTestSupport
     @BeforeEach
     void setUp() {
         ids = MatchUserFixtures.create(users, 3);
-        facilityId = FacilityFixtures.create(facilities, FacilityFixtures.newServiceId()).serviceId();
+        facilityId = FacilityFixtures.create(facilities, FacilityFixtures.newServiceId()).id();
     }
 
     @AfterEach
@@ -224,11 +224,11 @@ class MatchUserGuardMariaDBIntegrationTest extends MariaDBIntegrationTestSupport
             lookupPaused.countDown();
             await(resumeLookup);
             return facility;
-        }).when(facilities).findServices(List.of(facilityId));
+        }).when(facilities).findServicesByIds(List.of(facilityId));
 
         assertRemoteLookupAllowsLockAndWithdrawal(false, null, userId, lookupPaused, resumeLookup);
         verify(users).findUser(userId);
-        verify(facilities).findServices(List.of(facilityId));
+        verify(facilities).findServicesByIds(List.of(facilityId));
     }
 
     private void assertRemoteLookupAllowsLockAndWithdrawal(boolean join, Long existingMatch, Long userId,

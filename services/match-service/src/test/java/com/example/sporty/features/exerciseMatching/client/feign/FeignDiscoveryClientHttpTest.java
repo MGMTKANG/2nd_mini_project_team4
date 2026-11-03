@@ -95,16 +95,16 @@ class FeignDiscoveryClientHttpTest {
     @Test
     void facilityClientReachesStubThroughServiceNameAndLoadBalancer() {
         FACILITY_SERVICE.stub("/internal/facility-services", 200, """
-                [{"serviceId":7,"serviceName":"풋살장","locationName":"체육관",
+                [{"id":7,"serviceId":"S7","serviceName":"풋살장","locationName":"체육관",
                   "region":"강남구","isFree":true,"reservationDeadlineAt":null}]
                 """);
         assertDiscoveryAndLoadBalancer("facility-service", FACILITY_SERVICE);
 
-        assertThat(facilityClient.findServices(List.of(7L))).containsExactly(
-                new FacilityServiceSummary(7L, "풋살장", "체육관", "강남구", true, null));
+        assertThat(facilityClient.findServices(List.of("S7"))).containsExactly(
+                new FacilityServiceSummary(7L, "S7", "풋살장", "체육관", "강남구", true, null));
 
         assertThat(FACILITY_SERVICE.requests()).containsExactly(
-                new Request("GET", "/internal/facility-services", Map.of("ids", List.of("7"))));
+                new Request("GET", "/internal/facility-services", Map.of("ids", List.of("S7"))));
         assertThat(USER_SERVICE.requests()).isEmpty();
     }
 

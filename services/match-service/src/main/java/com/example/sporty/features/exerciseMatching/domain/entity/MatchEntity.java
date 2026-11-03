@@ -31,7 +31,7 @@ import lombok.ToString;
 
 @Entity
 @Table(name = "`match`")
-@Check(name = "ck_match_valid_fields", constraints = "CHAR_LENGTH(TRIM(title)) > 0 AND max_participant >= 1 AND end_at > start_at AND service_id > 0")
+@Check(name = "ck_match_valid_fields", constraints = "CHAR_LENGTH(TRIM(title)) > 0 AND max_participant >= 1 AND end_at > start_at AND CHAR_LENGTH(TRIM(service_id)) > 0")
 @Builder 
 @Getter 
 @ToString 
@@ -97,9 +97,9 @@ public class MatchEntity {
     @Column(name = "gender_group", length = 10, nullable = false)
     private GenderGroup genderGroup;
 
-    // 체육시설 서비스의 service.id 논리 참조. 서비스별 DB 분리로 FK는 두지 않는다.
-    @Column(name = "service_id", nullable = false)
-    private Long serviceId;
+    // 체육시설의 서울시 svcId 논리 참조. 서비스별 DB 분리로 FK는 두지 않는다.
+    @Column(name = "service_id", nullable = false, length = 50)
+    private String serviceId;
 
     // Match의 Status를 CLOSED 로 변경하는 메서드
     public void closeRecruitment() {

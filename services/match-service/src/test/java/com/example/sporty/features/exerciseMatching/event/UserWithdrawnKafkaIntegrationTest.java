@@ -361,7 +361,7 @@ class UserWithdrawnKafkaIntegrationTest {
         return transactions.execute(status -> {
             LocalDateTime start = LocalDateTime.now().plusDays(1).withNano(0);
             MatchEntity match = matches.saveAndFlush(MatchEntity.builder()
-                    .title("Kafka 탈퇴 정리").description("이벤트 테스트").serviceId(1L)
+                    .title("Kafka 탈퇴 정리").description("이벤트 테스트").serviceId("S1")
                     .startAt(start).endAt(start.plusHours(2)).maxParticipant(capacity)
                     .skillLevel(SkillLevel.BEGINNER).sportType(SportType.FUTSAL)
                     .genderGroup(GenderGroup.MIXED).build());

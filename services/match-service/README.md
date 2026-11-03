@@ -52,6 +52,8 @@ Feign/Eureka 호출은 로드밸런서 자동 재시도 끔(`spring.cloud.loadba
 
 운영 DB는 아래 [운영 스키마 적용 안내](#운영-스키마-적용과-erd-범위)에 따라 빈 DB용 전체 SQL 또는 기존 DB용 추가 SQL을 먼저 적용한 뒤 `MATCH_JPA_DDL_AUTO=validate`로 실행한다. `validate`는 스키마를 생성·변경하지 않으므로 DB별 사전 검증이 필요하다. 기본 `update`는 현재 로컬 동작을 유지한다.
 
+주의. `ddl-auto=update`는 기존 BIGINT `service_id` 칸의 타입을 바꾸지 않으므로, 이미 `match` 테이블이 있는 DB는 새로 만들거나 칸 타입을 직접 바꿔야 한다.
+
 Actuator 웹 노출은 `health,info`뿐이며 두 경로는 비로그인 접근을 허용한다. Compose 앱 healthcheck는 미설정이다. K8s에서는 `management.endpoint.health.probes.enabled=true`(환경 변수 `MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED=true`)로 활성화하고, liveness는 `/actuator/health/liveness`, readiness는 `/actuator/health/readiness`를 사용한다. 두 probe 경로도 비로그인 접근을 허용한다.
 
 경기 시작·모집 재개 판정은 `Asia/Seoul`을 명시해 JVM 기본 시간대와 무관하게 비교한다. 프론트/API의 오프셋 없는 `startAt`·`endAt`은 서울 지역 시각이다. Docker도 로그와 기본 시각을 맞추도록 `TZ=Asia/Seoul`로 실행한다. 테스트 fixture는 서울 기준이며 별도 시간대 회귀 테스트가 UTC·미국 서부 JVM에서도 같은 동작을 확인한다.
@@ -159,11 +161,11 @@ SQL은 모두 `CREATE TABLE IF NOT EXISTS`·`ENGINE=InnoDB`이며 데이터 삭�
 
 | 원본 | 변경 |
 |---|---|
-| `MatchEntity.service` (시설 엔티티 참조) | `serviceId` 값만 저장 |
+| `MatchEntity.service` (시설 엔티티 참조) | `match.service_id`에 서울시 svcId(`VARCHAR(50)`) 저장 |
 | `MatchParticipantEntity.user` (회원 엔티티 참조) | `userId` 값만 저장 |
 | `UserRepository`·`ProfileRepository` 직접 조회 | `UserClient` → 유저 서비스 Feign 호출 |
 | `ServiceRepository` 직접 조회, 검색 시 시설·장소 JOIN | `FacilityClient` → 체육시설 서비스 Feign 호출 |
-| 지역·무료 여부 검색을 매치 쿼리에서 JOIN | 체육시설 서비스에서 해당 `serviceId` 목록을 받아 `IN` 조건으로 검색 |
+| 지역·무료 여부 검색을 매치 쿼리에서 JOIN | 체육시설 서비스에서 해당 svcId 문자열 목록을 받아 `IN` 조건으로 검색 |
 | `createMatch`가 `SecurityContextHolder`에서 사용자 ID를 직접 읽음 | 컨트롤러에서 `@AuthenticationPrincipal`로 받아 전달 |
 | `joinMatch`가 회원 존재만 확인해 탈퇴 회원도 참가 가능 | 회원 확인 직후 ACTIVE 여부를 검사해 탈퇴 회원의 참가를 차단 (`WithdrawnUserFoundException`, 401, `USER_WITHDRAWN`) |
 | 생성·수정 요청에서 정원 1명 허용 | 최소 2명으로 Bean Validation 적용(400, `모집 정원은 2명 이상이어야 합니다.`). 검색 요청의 정원 조건은 유지 |
@@ -176,11 +178,11 @@ SQL은 모두 `CREATE TABLE IF NOT EXISTS`·`ENGINE=InnoDB`이며 데이터 삭�
 
 ### 원본과 달라진 동작
 
-- 체육시설 서비스 응답에 해당 시설이 없으면 목록·내 매치·상세의 시설 조회 필드는 `null`로 반환한다(상세의 `serviceId`는 유지한다). 원본은 시설 FK/JOIN을 전제로 한다.
+- 체육시설 서비스 응답에 해당 시설이 없으면 목록·내 매치·상세의 시설 조회 필드는 `null`로 반환한다. 상세의 `serviceId`는 시설 응답의 숫자 `id`로 채우며 시설을 찾지 못하면 `null`이다. 원본은 시설 FK/JOIN을 전제로 한다.
 - 유저·체육시설 호출의 HTTP 오류·연결 실패·타임아웃·JSON 해석 실패와 필수 필드 누락은 `503`, `{"code":"EXTERNAL_SERVICE_UNAVAILABLE","message":"..."}`로 반환한다. 회원 단건 조회 404는 기존처럼 빈 결과로 처리한다(생성·참가 시 `401 / MATCH_USER_NOT_FOUND`). 운영 Feign 타임아웃은 연결 1000ms·응답 3000ms이며, 생성·참가의 원격 확인은 로컬 행 잠금 전에 수행한다. 동시 오류의 응답 우선순위는 위 표와 같다.
 - 인증이 필요한 경로에서 토큰이 없거나 손상·만료·Refresh 토큰으로 인증에 실패하면 `401`, `{"code":"UNAUTHORIZED","message":"인증에 실패했습니다."}`를 JSON·UTF-8로 반환한다. 도메인의 회원 없음·탈퇴 오류 코드는 각각 `MATCH_USER_NOT_FOUND`·`USER_WITHDRAWN`을 유지한다. 공개 상세 조회의 잘못된 토큰은 기존처럼 비로그인으로 처리한다.
 - `read-timeout`은 호출 1건의 응답 대기 상한이며 전체 요청·잠금 점유 시간의 상한은 아니다. 잠금 안에서 원격 호출을 여러 번 하면(예: 수정 응답의 프로필→시설 순차 조회) 대기 시간이 합쳐질 수 있다.
-- 매치 수정 후 응답 조합의 프로필→시설 원격 조회는 여전히 매치 행 잠금 안에서 실행한다. 원격 장애가 나면 같은 트랜잭션 경계 안에서 처리해 수정을 커밋하고 `200`을 반환한다. 이때 시설 조회 필드(`serviceName`, `locationName`, `region`)와 참가자 프로필 필드(`profileId`, `nickname`, `imageUrl`)는 `null`이며 시설 ID·참가 인원·역할·권한은 유지한다. 생성·참가는 저장 전 원격 확인에 실패하면 `503`이며 매치·참가자를 저장하지 않는다.
+- 매치 수정 후 응답 조합의 프로필→시설 원격 조회는 여전히 매치 행 잠금 안에서 실행한다. 원격 장애가 나면 같은 트랜잭션 경계 안에서 처리해 수정을 커밋하고 `200`을 반환한다. 이때 시설 조회 필드(`serviceId`, `serviceName`, `locationName`, `region`)와 참가자 프로필 필드(`profileId`, `nickname`, `imageUrl`)는 `null`이며 참가 인원·역할·권한은 유지한다. 생성·참가는 저장 전 원격 확인에 실패하면 `503`이며 매치·참가자를 저장하지 않는다.
 - 회원 탈퇴 정리 메서드 `removeMatchesForWithdrawal`은 `UserWithdrawn` Kafka 처리 서비스에서 호출한다. 기본값은 수신 비활성이며, 실제 유저 서비스·Kafka와의 연동은 아직 검증하지 않았다.
 
 ## 검증
@@ -251,8 +253,9 @@ Docker 수동 확인(PR #5·#6 시점, Apple Silicon): 이미지 빌드, 비루�
 
 | 용도 | 요청 | 응답 |
 |---|---|---|
-| 목록·상세·내 매치에 시설 정보 표시, 생성 시 시설 확인 | `GET /internal/facility-services?ids=1&ids=2` | `[{"serviceId":1,"serviceName":"..","locationName":"..","region":"강남구","isFree":true,"reservationDeadlineAt":"2026-11-01T18:00:00"}]` |
-| 지역·무료 여부 검색 | `GET /internal/facility-services/ids?region=강남&isFree=true` | `[1,2,3]` (region은 대소문자 무시 부분 일치) |
+| 목록·상세·내 매치에 저장된 svcId로 시설 정보 표시 | `GET /internal/facility-services?ids=S240101000000000001&ids=S240101000000000002` | `[{"id":1,"serviceId":"S240101000000000001","serviceName":"..","locationName":"..","region":"강남구","isFree":true,"reservationDeadlineAt":"2026-11-01T18:00:00"}]` |
+| 생성·목록 검색의 숫자 시설 PK를 svcId로 변환 | `GET /internal/facility-services/by-id?ids=1&ids=2` | `[{"id":1,"serviceId":"S240101000000000001","serviceName":"..","locationName":"..","region":"강남구","isFree":true,"reservationDeadlineAt":"2026-11-01T18:00:00"}]` |
+| 지역·무료 여부 검색 | `GET /internal/facility-services/ids?region=강남&isFree=true` | `["S240101000000000001","S240101000000000002"]` (region은 대소문자 무시 부분 일치, 비우면 조건 제외) |
 
 ## 남은 일
 

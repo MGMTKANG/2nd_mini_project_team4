@@ -23,6 +23,6 @@ public final class FacilityFixtures {
     }
 
     public static FacilityServiceSummary service(long id, Boolean isFree) {
-        return new FacilityServiceSummary(id, "Test service " + id, "Test location", "강남구", isFree, null);
+        return new FacilityServiceSummary(id, "S" + id, "Test service " + id, "Test location", "강남구", isFree, null);
     }
 }

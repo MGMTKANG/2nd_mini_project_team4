@@ -26,6 +26,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.env.Environment;
 import org.springframework.core.io.FileSystemResource;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
@@ -138,7 +139,7 @@ class MatchSchemaMariaDBIntegrationTest {
                 new Column("skill_level", "varchar", 30L, false),
                 new Column("sport_type", "varchar", 15L, false),
                 new Column("gender_group", "varchar", 10L, false),
-                new Column("service_id", "bigint", null, false));
+                new Column("service_id", "varchar", 50L, false));
         assertColumns("match_participant",
                 new Column("match_participant_id", "bigint", null, false),
                 new Column("user_id", "bigint", null, false),
@@ -186,7 +187,7 @@ class MatchSchemaMariaDBIntegrationTest {
                 WHERE CONSTRAINT_SCHEMA=DATABASE() AND TABLE_NAME='match' AND CONSTRAINT_NAME='ck_match_valid_fields'
                 """, String.class);
         assertThat(Objects.requireNonNull(check).toLowerCase(Locale.ROOT).replace("`", "").replaceAll("\\s+", ""))
-                .contains("char_length(trim(title))>0", "max_participant>=1", "end_at>start_at", "service_id>0");
+                .contains("char_length(trim(title))>0", "max_participant>=1", "end_at>start_at", "char_length(trim(service_id))>0");
         assertThat(columnDefault("match", "status")).isEqualTo("'RECRUITING'");
         assertThat(columnDefault("match", "skill_level")).isEqualTo("'BEGINNER'");
         assertThat(columnDefault("match_user_state", "withdrawn")).isEqualTo("0");
@@ -195,7 +196,7 @@ class MatchSchemaMariaDBIntegrationTest {
     @Test
     void deploymentSqlEnforcesConstraints() {
         // DB 최소 정원은 1이다. API 최소 정원 2와 구분한다.
-        long matchId = insertMatch("운영 SQL 기본값", 1, START_AT, START_AT.plusHours(1), 100L);
+        long matchId = insertMatch("운영 SQL 기본값", 1, START_AT, START_AT.plusHours(1), "S100");
         assertThat(matchId).isPositive();
         assertThat(jdbc.queryForObject("SELECT status FROM `match` WHERE id=?", String.class, matchId))
                 .isEqualTo("RECRUITING");
@@ -227,24 +228,30 @@ class MatchSchemaMariaDBIntegrationTest {
         assertNullsRejected("processed_event", List.of("consumer_name", "event_id", "processed_at"));
         assertNullsRejected("match_user_state", List.of("user_id", "withdrawn"));
         for (String title : List.of("", "   ")) {
-            assertThatThrownBy(() -> insertMatch(title, 1, START_AT, START_AT.plusHours(1), 100L))
+            assertThatThrownBy(() -> insertMatch(title, 1, START_AT, START_AT.plusHours(1), "S100"))
                     .isInstanceOf(DataIntegrityViolationException.class);
         }
-        assertThatThrownBy(() -> insertMatch("정원 오류", 0, START_AT, START_AT.plusHours(1), 100L))
+        assertThatThrownBy(() -> insertMatch("정원 오류", 0, START_AT, START_AT.plusHours(1), "S100"))
                 .isInstanceOf(DataIntegrityViolationException.class);
         for (LocalDateTime endAt : List.of(START_AT, START_AT.minusHours(1))) {
-            assertThatThrownBy(() -> insertMatch("시간 오류", 1, START_AT, endAt, 100L))
+            assertThatThrownBy(() -> insertMatch("시간 오류", 1, START_AT, endAt, "S100"))
                     .isInstanceOf(DataIntegrityViolationException.class);
         }
-        for (long serviceId : List.of(0L, -1L)) {
+        for (String serviceId : List.of("", "   ")) {
             assertThatThrownBy(() -> insertMatch("시설 오류", 1, START_AT, START_AT.plusHours(1), serviceId))
                     .isInstanceOf(DataIntegrityViolationException.class);
         }
+        // MariaDB 1406(길이 초과)은 Spring에서 DataIntegrityViolationException이 아닌 예외로 바뀐다.
+        assertThatThrownBy(() -> insertMatch("시설 길이 오류", 1, START_AT, START_AT.plusHours(1), "S".repeat(51)))
+                .isInstanceOfSatisfying(DataAccessException.class, exception ->
+                        assertThat(exception.getMostSpecificCause()).hasMessageContaining("Data too long"));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM `match` WHERE title=?", Long.class, "시설 길이 오류"))
+                .isZero();
     }
 
     @Test
     void reapplyingDeploymentSqlPreservesData() throws Exception {
-        long matchId = insertMatch("재적용 보존", 2, START_AT, START_AT.plusHours(1), 100L);
+        long matchId = insertMatch("재적용 보존", 2, START_AT, START_AT.plusHours(1), "S100");
         jdbc.update("UPDATE `match` SET description=?, status=? WHERE id=?", "수정된 설명", "CLOSED", matchId);
         insertParticipant(matchId, 101L);
         insertEvent("consumer-a", UUID.randomUUID().toString());
@@ -297,7 +304,7 @@ class MatchSchemaMariaDBIntegrationTest {
         }
     }
 
-    private long insertMatch(String title, int capacity, LocalDateTime startAt, LocalDateTime endAt, long serviceId) {
+    private long insertMatch(String title, int capacity, LocalDateTime startAt, LocalDateTime endAt, String serviceId) {
         GeneratedKeyHolder keys = new GeneratedKeyHolder();
         Object[] values = {title, startAt, endAt, capacity, "SOCCER", "MIXED", serviceId,
                 Timestamp.valueOf(START_AT), Timestamp.valueOf(START_AT)};

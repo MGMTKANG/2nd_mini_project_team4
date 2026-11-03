@@ -83,7 +83,7 @@ class MatchLeaveIntegrationTest {
     private FakeFacilityClient fakeFacilityClient;
 
     private Map<Long, Long> users;
-    private Long serviceId;
+    private String serviceId;
 
     private Long userId(long label) {
         return users.get(label);

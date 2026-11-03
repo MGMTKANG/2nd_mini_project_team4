@@ -28,7 +28,7 @@ class MatchTimeZoneTest {
             FacilityClient facilities = mock(FacilityClient.class);
             MatchService service = new MatchService(matches, participants, users, facilities, mock(MatchUserGuard.class));
             LocalDateTime start = LocalDateTime.now(ZoneId.of("Asia/Seoul")).minusHours(1);
-            MatchEntity match = MatchEntity.builder().id(1L).serviceId(1L).title("서울 경기")
+            MatchEntity match = MatchEntity.builder().id(1L).serviceId("S1").title("서울 경기")
                     .startAt(start).endAt(start.plusHours(2)).maxParticipant(3).build();
             when(matches.findByIdForUpdate(1L)).thenReturn(Optional.of(match));
             when(users.findUser(2L)).thenReturn(Optional.of(new UserClient.UserSummary(2L, "ACTIVE")));
@@ -44,7 +44,7 @@ class MatchTimeZoneTest {
 
             when(participants.findByMatch_IdAndUserId(1L, 1L)).thenReturn(Optional.of(
                     MatchParticipantEntity.builder().match(match).userId(1L).role(MatchParticipantRole.OWNER).build()));
-            when(facilities.findService(1L)).thenReturn(Optional.empty());
+            when(facilities.findService("S1")).thenReturn(Optional.empty());
             service.modifyMatch(1L, 1L, MatchModifyRequestDto.builder().title("서울 경기")
                     .startAt(start).endAt(start.plusHours(2)).maxParticipant(4)
                     .skillLevel(SkillLevel.BEGINNER).genderGroup(GenderGroup.MIXED).build());
