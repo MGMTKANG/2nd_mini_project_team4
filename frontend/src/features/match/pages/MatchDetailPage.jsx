@@ -278,7 +278,7 @@ function MatchDetailContent({ match, preview, onRefresh }) {
           <span className="detail-tag">{SPORTS[match.sportType] || '종목 정보 없음'}</span>
           <span className="detail-tag detail-tag-neutral">{LEVELS[match.skillLevel] || '실력 정보 없음'}</span>
           <span className="detail-tag detail-tag-neutral">{GENDERS[match.genderGroup] ?? '성별 구성 정보 없음'}</span>
-          <span className={`detail-tag ${match.status === 'RECRUITING' ? 'detail-tag-open' : 'detail-tag-neutral'}`}>{status}</span>
+          <span className={`detail-tag ${!fundingFailed && match.status === 'RECRUITING' ? 'detail-tag-open' : 'detail-tag-neutral'}`}>{status}</span>
         </div>
         <h1>{match.title || '제목 정보 없음'}</h1>
         <div className="detail-meta"><span>{schedule}</span><span>{[match.region, match.locationName].filter(Boolean).join(' · ') || '장소 정보 없음'}</span></div>
