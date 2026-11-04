@@ -1,0 +1,93 @@
+name: Frontend Deploy
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - "frontend/**"
+      - ".github/workflows/frontend-deploy.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-deploy-develop
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and deploy frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      CI: "true"
+      AWS_REGION: ap-northeast-2
+      S3_BUCKET: sporty-team4-frontend-dev-088153173875-ap-northeast-2-an
+      CLOUDFRONT_DISTRIBUTION_ID: E3ODNWXGWK7P8Q
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Test
+        working-directory: frontend
+        run: npm test -- --watchAll=false --runInBand
+
+      - name: Build
+        working-directory: frontend
+        run: npm run build
+
+      - name: Configure AWS credentials with OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::088153173875:role/team4-github-frontend-deploy
+          aws-region: ${{ env.AWS_REGION }}
+          allowed-account-ids: "088153173875"
+
+      - name: Upload static assets
+        run: |
+          aws s3 sync frontend/build/static/ \
+            "s3://${S3_BUCKET}/static/" \
+            --cache-control "public,max-age=31536000,immutable" \
+            --only-show-errors
+
+      - name: Upload other files
+        run: |
+          aws s3 sync frontend/build/ \
+            "s3://${S3_BUCKET}/" \
+            --exclude "static/*" \
+            --exclude "index.html" \
+            --cache-control "no-cache" \
+            --only-show-errors
+
+      - name: Upload index.html last
+        run: |
+          aws s3 cp frontend/build/index.html \
+            "s3://${S3_BUCKET}/index.html" \
+            --content-type "text/html" \
+            --cache-control "no-cache" \
+            --only-show-errors
+
+      - name: Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" \
+            --paths "/*"
