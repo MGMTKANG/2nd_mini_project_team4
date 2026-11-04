@@ -25,7 +25,7 @@ spec:
               workload-group: sporty-apps
       containers:
         - name: api-gateway
-          image: 088153173875.dkr.ecr.ap-northeast-2.amazonaws.com/team4/api-gateway:sha-d48c7168ba7cb1927e2c0ba45223d954d52edbe1-41814689587-1
+          image: 088153173875.dkr.ecr.ap-northeast-2.amazonaws.com/team4/api-gateway:sha-4b89ffa03ab97cfd78f994cac745c2ee2be723a1-41830867056-1
           ports:
             - name: http
               containerPort: 8000

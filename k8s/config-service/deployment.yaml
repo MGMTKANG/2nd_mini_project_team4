@@ -25,7 +25,7 @@ spec:
               workload-group: sporty-apps
       containers:
         - name: config-service
-          image: 088153173875.dkr.ecr.ap-northeast-2.amazonaws.com/team4/config-service:sha-b681918df12b16458428ea2d7a265c087eabb9cf-41818384904-1
+          image: 088153173875.dkr.ecr.ap-northeast-2.amazonaws.com/team4/config-service:sha-4b89ffa03ab97cfd78f994cac745c2ee2be723a1-41830867056-1
           ports:
             - name: http
               containerPort: 8888
