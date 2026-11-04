@@ -196,9 +196,9 @@ jobs:
           echo "### Match service image" >> "$GITHUB_STEP_SUMMARY"
           echo "\`$IMAGE_URI\`" >> "$GITHUB_STEP_SUMMARY"
 
-  update-match-deployment:
-    name: Update match deployment image
-    needs: publish-match
+  update-deployments:
+    name: Update match and facility deployment images
+    needs: [publish-match, publish-facility]
     if: github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     permissions:
@@ -209,9 +209,10 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: true
 
-      - name: Commit the published image URI
+      - name: Commit the published image URIs
         env:
-          IMAGE_URI: ${{ needs.publish-match.outputs.image_uri }}
+          MATCH_IMAGE_URI: ${{ needs.publish-match.outputs.image_uri }}
+          FACILITY_IMAGE_URI: ${{ needs.publish-facility.outputs.image_uri }}
         run: |
           set -euo pipefail
 
@@ -221,40 +222,43 @@ jobs:
             exit 0
           fi
 
-          manifest=k8s/match-service/deployment.yaml
-          python3 - "$manifest" <<'PY'
+          python3 - <<'PY'
           import os
           import re
-          import sys
           from pathlib import Path
 
-          manifest = Path(sys.argv[1])
-          image_uri = os.environ["IMAGE_URI"]
-          image_repo = "088153173875.dkr.ecr.ap-northeast-2.amazonaws.com/team4/match-service"
-          expected_prefix = f'{image_repo}:sha-{os.environ["GITHUB_SHA"]}-'
+          updates = {}
+          for service in ("match", "facility"):
+              manifest = Path("k8s") / f"{service}-service" / "deployment.yaml"
+              image_uri = os.environ[f"{service.upper()}_IMAGE_URI"]
+              image_repo = f"088153173875.dkr.ecr.ap-northeast-2.amazonaws.com/team4/{service}-service"
+              expected_prefix = f'{image_repo}:sha-{os.environ["GITHUB_SHA"]}-'
 
-          if not re.fullmatch(re.escape(expected_prefix) + r"\d+-\d+", image_uri):
-              raise SystemExit("Unexpected match-service image URI")
+              if not re.fullmatch(re.escape(expected_prefix) + r"\d+-\d+", image_uri):
+                  raise SystemExit(f"Unexpected {service}-service image URI")
 
-          updated, count = re.subn(
-              r"^([ \t]*image:[ \t]*)" + re.escape(image_repo) + r":[^\r\n]+$",
-              lambda match: match.group(1) + image_uri,
-              manifest.read_text(),
-              flags=re.MULTILINE,
-          )
-          if count != 1:
-              raise SystemExit("Expected exactly one match-service image line")
-          manifest.write_text(updated)
+              updated, count = re.subn(
+                  r"^([ \t]*image:[ \t]*)" + re.escape(image_repo) + r":[^\r\n]+$",
+                  lambda match: match.group(1) + image_uri,
+                  manifest.read_text(),
+                  flags=re.MULTILINE,
+              )
+              if count != 1:
+                  raise SystemExit(f"Expected exactly one {service}-service image line")
+              updates[manifest] = updated
+
+          for manifest, updated in updates.items():
+              manifest.write_text(updated)
           PY
 
-          if git diff --quiet -- "$manifest"; then
+          if git diff --quiet -- k8s/match-service/deployment.yaml k8s/facility-service/deployment.yaml; then
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- "$manifest"
-          git commit -m "chore(match-service): 갱신된 배포 이미지 반영"
+          git add -- k8s/match-service/deployment.yaml k8s/facility-service/deployment.yaml
+          git commit -m "chore(deploy): match 및 facility 이미지 갱신"
           git push origin HEAD:refs/heads/develop
   facility:
     name: Facility service build and test
