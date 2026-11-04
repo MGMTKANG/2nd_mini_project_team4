@@ -283,15 +283,24 @@ jobs:
           echo "\`$IMAGE_URI\`" >> "$GITHUB_STEP_SUMMARY"
 
   update-deployments:
-    name: Update match, facility, user, config and API Gateway deployment images
-    needs: [publish-match, publish-facility, publish-user, publish-config, publish-api-gateway]
+    name: Update deployment images
+    needs:
+      [
+        publish-match,
+        publish-facility,
+        publish-user,
+        publish-config,
+        publish-api-gateway,
+        publish-point,
+      ]
     if: >-
       ${{ !cancelled() &&
           github.ref == 'refs/heads/develop' &&
           needs.publish-match.result == 'success' &&
           needs.publish-facility.result == 'success' &&
           needs.publish-user.result == 'success' &&
-          needs.publish-config.result == 'success' }}
+          needs.publish-config.result == 'success' &&
+          needs.publish-point.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -309,6 +318,7 @@ jobs:
           CONFIG_IMAGE_URI: ${{ needs.publish-config.outputs.image_uri }}
           API_GATEWAY_IMAGE_URI: ${{ needs.publish-api-gateway.outputs.image_uri }}
           API_GATEWAY_PUBLISH_RESULT: ${{ needs.publish-api-gateway.result }}
+          POINT_IMAGE_URI: ${{ needs.publish-point.outputs.image_uri }}
         run: |
           set -euo pipefail
 
@@ -324,7 +334,7 @@ jobs:
           from pathlib import Path
 
           updates = {}
-          for service, env_prefix in (("match-service", "MATCH"), ("facility-service", "FACILITY"), ("user-service", "USER"), ("config-service", "CONFIG"), ("api-gateway", "API_GATEWAY")):
+          for service, env_prefix in (("match-service", "MATCH"), ("facility-service", "FACILITY"), ("user-service", "USER"), ("config-service", "CONFIG"), ("api-gateway", "API_GATEWAY"), ("point-service", "POINT")):
               if service == "api-gateway" and os.environ["API_GATEWAY_PUBLISH_RESULT"] != "success":
                   continue
               manifest = Path("k8s") / service / "deployment.yaml"
@@ -349,14 +359,14 @@ jobs:
               manifest.write_text(updated)
           PY
 
-          if git diff --quiet -- k8s/match-service/deployment.yaml k8s/facility-service/deployment.yaml k8s/user-service/deployment.yaml k8s/config-service/deployment.yaml k8s/api-gateway/deployment.yaml; then
+          if git diff --quiet -- k8s/match-service/deployment.yaml k8s/facility-service/deployment.yaml k8s/user-service/deployment.yaml k8s/config-service/deployment.yaml k8s/api-gateway/deployment.yaml k8s/point-service/deployment.yaml; then
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- k8s/match-service/deployment.yaml k8s/facility-service/deployment.yaml k8s/user-service/deployment.yaml k8s/config-service/deployment.yaml k8s/api-gateway/deployment.yaml
-          git commit -m "chore(deploy): match·facility·user·config·api-gateway 이미지 갱신"
+          git add -- k8s/match-service/deployment.yaml k8s/facility-service/deployment.yaml k8s/user-service/deployment.yaml k8s/config-service/deployment.yaml k8s/api-gateway/deployment.yaml k8s/point-service/deployment.yaml
+          git commit -m "chore(deploy): update published service images"
           git push origin HEAD:refs/heads/develop
   facility:
     name: Facility service build and test
