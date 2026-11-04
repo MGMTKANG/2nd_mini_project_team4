@@ -33,6 +33,14 @@ cd services/user-service
 
 ---
 
+## 로그아웃 API
+
+`POST /api/auth/logout`은 Bearer Access Token의 회원 ID에 해당하는 Redis Refresh Token을 삭제하고 본문 없는 `204`를 반환한다. 요청 본문은 필요 없으며 다른 회원 ID를 받아 처리하지 않는다. 토큰이 없거나 유효하지 않으면 `401`을 반환한다. 이미 Refresh Token이 없는 경우에도 `204`를 반환한다.
+
+삭제된 Refresh Token으로 `/api/auth/refresh`를 호출하면 `401`이다. 기존 Access Token은 만료 전까지 유효하며, 이 API가 즉시 무효화하지는 않는다.
+
+검증: `bash ./gradlew clean test --no-daemon` (Java 17). `AuthLogoutIntegrationTest`는 실제 JWT·보안 필터·컨트롤러·서비스와 메모리로 모사한 Redis 저장소를 사용하여 본인 토큰 삭제, 반복 로그아웃, 미인증·잘못된 토큰 차단, 로그인→재발급→로그아웃→재발급 거절을 검증한다. 실제 Redis·배포 화면 연동은 별도 검증 대상이다.
+
 ## 3. 타 마이크로서비스 연동 (Internal Feign API)
 
 `match-service` 등 타 서비스에서 회원 상태 확인 및 참가자 프로필 조회를 위해 아래 내부 API를 제공합니다:
