@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: config-service
+  namespace: sporty
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: config-service
+  template:
+    metadata:
+      labels:
+        app: config-service
+    spec:
+      terminationGracePeriodSeconds: 40
+      containers:
+        - name: config-service
+          image: 088153173875.dkr.ecr.ap-northeast-2.amazonaws.com/team4/config-service:sha-b92960037f9498a30de4846f65d197063618e659-41775610961-1
+          ports:
+            - name: http
+              containerPort: 8888
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: git
+            - name: TZ
+              value: Asia/Seoul
+            - name: MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED
+              value: "true"
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
