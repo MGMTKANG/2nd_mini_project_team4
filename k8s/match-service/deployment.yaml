@@ -25,7 +25,7 @@ spec:
               workload-group: sporty-apps
       containers:
         - name: match-service
-          image: 088153173875.dkr.ecr.ap-northeast-2.amazonaws.com/team4/match-service:sha-8093673a7e669eb3d064f5269dc3e6e1c1587f03-41843768147-1
+          image: 088153173875.dkr.ecr.ap-northeast-2.amazonaws.com/team4/match-service:sha-844d5fab3a786cbee33f9e57a1ddb88e27395ebe-41856969234-1
           ports:
             - name: http
               containerPort: 8082
