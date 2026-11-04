@@ -283,9 +283,15 @@ jobs:
           echo "\`$IMAGE_URI\`" >> "$GITHUB_STEP_SUMMARY"
 
   update-deployments:
-    name: Update match, facility, user and config deployment images
-    needs: [publish-match, publish-facility, publish-user, publish-config]
-    if: github.ref == 'refs/heads/develop'
+    name: Update match, facility, user, config and API Gateway deployment images
+    needs: [publish-match, publish-facility, publish-user, publish-config, publish-api-gateway]
+    if: >-
+      ${{ !cancelled() &&
+          github.ref == 'refs/heads/develop' &&
+          needs.publish-match.result == 'success' &&
+          needs.publish-facility.result == 'success' &&
+          needs.publish-user.result == 'success' &&
+          needs.publish-config.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -301,6 +307,8 @@ jobs:
           FACILITY_IMAGE_URI: ${{ needs.publish-facility.outputs.image_uri }}
           USER_IMAGE_URI: ${{ needs.publish-user.outputs.image_uri }}
           CONFIG_IMAGE_URI: ${{ needs.publish-config.outputs.image_uri }}
+          API_GATEWAY_IMAGE_URI: ${{ needs.publish-api-gateway.outputs.image_uri }}
+          API_GATEWAY_PUBLISH_RESULT: ${{ needs.publish-api-gateway.result }}
         run: |
           set -euo pipefail
 
@@ -316,14 +324,16 @@ jobs:
           from pathlib import Path
 
           updates = {}
-          for service in ("match", "facility", "user", "config"):
-              manifest = Path("k8s") / f"{service}-service" / "deployment.yaml"
-              image_uri = os.environ[f"{service.upper()}_IMAGE_URI"]
-              image_repo = f"088153173875.dkr.ecr.ap-northeast-2.amazonaws.com/team4/{service}-service"
+          for service, env_prefix in (("match-service", "MATCH"), ("facility-service", "FACILITY"), ("user-service", "USER"), ("config-service", "CONFIG"), ("api-gateway", "API_GATEWAY")):
+              if service == "api-gateway" and os.environ["API_GATEWAY_PUBLISH_RESULT"] != "success":
+                  continue
+              manifest = Path("k8s") / service / "deployment.yaml"
+              image_uri = os.environ[f"{env_prefix}_IMAGE_URI"]
+              image_repo = f"088153173875.dkr.ecr.ap-northeast-2.amazonaws.com/team4/{service}"
               expected_prefix = f'{image_repo}:sha-{os.environ["GITHUB_SHA"]}-'
 
               if not re.fullmatch(re.escape(expected_prefix) + r"\d+-\d+", image_uri):
-                  raise SystemExit(f"Unexpected {service}-service image URI")
+                  raise SystemExit(f"Unexpected {service} image URI")
 
               updated, count = re.subn(
                   r"^([ \t]*image:[ \t]*)" + re.escape(image_repo) + r":[^\r\n]+$",
@@ -332,21 +342,21 @@ jobs:
                   flags=re.MULTILINE,
               )
               if count != 1:
-                  raise SystemExit(f"Expected exactly one {service}-service image line")
+                  raise SystemExit(f"Expected exactly one {service} image line")
               updates[manifest] = updated
 
           for manifest, updated in updates.items():
               manifest.write_text(updated)
           PY
 
-          if git diff --quiet -- k8s/match-service/deployment.yaml k8s/facility-service/deployment.yaml k8s/user-service/deployment.yaml k8s/config-service/deployment.yaml; then
+          if git diff --quiet -- k8s/match-service/deployment.yaml k8s/facility-service/deployment.yaml k8s/user-service/deployment.yaml k8s/config-service/deployment.yaml k8s/api-gateway/deployment.yaml; then
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- k8s/match-service/deployment.yaml k8s/facility-service/deployment.yaml k8s/user-service/deployment.yaml k8s/config-service/deployment.yaml
-          git commit -m "chore(deploy): match·facility·user·config 이미지 갱신"
+          git add -- k8s/match-service/deployment.yaml k8s/facility-service/deployment.yaml k8s/user-service/deployment.yaml k8s/config-service/deployment.yaml k8s/api-gateway/deployment.yaml
+          git commit -m "chore(deploy): match·facility·user·config·api-gateway 이미지 갱신"
           git push origin HEAD:refs/heads/develop
   facility:
     name: Facility service build and test
