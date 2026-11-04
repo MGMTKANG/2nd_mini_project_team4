@@ -13,8 +13,16 @@ spec:
     metadata:
       labels:
         app: facility-service
+        workload-group: sporty-apps
     spec:
       terminationGracePeriodSeconds: 40
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              workload-group: sporty-apps
       containers:
         - name: facility-service
           image: 088153173875.dkr.ecr.ap-northeast-2.amazonaws.com/team4/facility-service:sha-76aa79f5d2a5d9f88c0ab81ed236f11920941ff7-41806297225-1
