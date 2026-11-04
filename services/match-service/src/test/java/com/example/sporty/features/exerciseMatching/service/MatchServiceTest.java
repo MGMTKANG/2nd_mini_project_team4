@@ -207,6 +207,26 @@ class MatchServiceTest {
     }
 
     @ParameterizedTest
+    @CsvSource({"true", "false"})
+    @DisplayName("상세 응답의 프로필·시설 조회에서 프로그래밍 오류는 그대로 전파한다")
+    void detailDoesNotSwallowUnexpectedRemoteLookupException(boolean profileFailure) {
+        when(matchRepository.findById(101L))
+                .thenReturn(Optional.of(MatchEntity.builder().id(101L).serviceId("S7").build()));
+        when(matchParticipantRepository.findAllByMatch_IdOrderByIdAsc(101L))
+                .thenReturn(List.of(participant(1L, MatchParticipantRole.OWNER)));
+        IllegalStateException failure = new IllegalStateException("unexpected client error");
+        if (profileFailure) {
+            when(userClient.findProfiles(List.of(1L))).thenThrow(failure);
+        } else {
+            when(userClient.findProfiles(List.of(1L))).thenReturn(List.of());
+            when(facilityClient.findService("S7")).thenThrow(failure);
+        }
+
+        assertThat(assertThrows(IllegalStateException.class, () -> matchService.getMatchDetail(101L, 1L)))
+                .isSameAs(failure);
+    }
+
+    @ParameterizedTest
     @CsvSource({"1,RECRUITING", "-1,CLOSED"})
     @DisplayName("[EM07-001, EM07-002] 시작 전후 모두 본인의 참가 정보만 삭제하고 매치는 유지한다")
     void leaveMatchDeletesOnlyCurrentParticipant(int startOffsetHours, MatchStatus status) {

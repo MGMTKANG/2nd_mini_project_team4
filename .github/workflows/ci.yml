@@ -454,5 +454,104 @@ jobs:
           docker push "$IMAGE_URI"
           echo "image_uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
 
-          echo "### Point service image" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Config service image" >> "$GITHUB_STEP_SUMMARY"
+          echo "$IMAGE_URI" >> "$GITHUB_STEP_SUMMARY"
+
+  user:
+    name: User service build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TZ: Asia/Seoul
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Build and test user service
+        run: >
+          bash backend/sporty/gradlew
+          -p services/user-service
+          clean build --no-daemon
+
+      - name: Upload user service test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: user-service-test-reports
+          path: |
+            services/user-service/build/reports/tests/
+            services/user-service/build/test-results/
+          if-no-files-found: ignore
+
+
+  publish-user:
+    name: Publish user image to ECR
+    needs: [backend, frontend, user]
+    if: >-
+      github.ref == 'refs/heads/develop' &&
+      (github.event_name == 'push' ||
+       github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      image_uri: ${{ steps.push-image.outputs.image_uri }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ap-northeast-2
+      ECR_REPOSITORY: team4/user-service
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Check OIDC claims
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const token = await core.getIDToken('sts.amazonaws.com');
+            const claims = JSON.parse(
+              Buffer.from(token.split('.')[1], 'base64url').toString()
+            );
+            core.info(JSON.stringify({
+              sub: claims.sub,
+              aud: claims.aud,
+              repository: claims.repository,
+              ref: claims.ref
+            }, null, 2));
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::088153173875:role/team4-github-ecr-push
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push user image
+        id: push-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          IMAGE_TAG="sha-${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+
+          docker build --platform linux/amd64 \
+            -t "$IMAGE_URI" \
+            services/user-service
+
+          docker push "$IMAGE_URI"
+          echo "image_uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+
+          echo "### User service image" >> "$GITHUB_STEP_SUMMARY"
           echo "\`$IMAGE_URI\`" >> "$GITHUB_STEP_SUMMARY"
