@@ -299,7 +299,7 @@ jobs:
 
   # config 설정
   config:
-    name: Config service build
+    name: Config service build and test
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
