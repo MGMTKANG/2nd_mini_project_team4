@@ -357,3 +357,76 @@ jobs:
 
           echo "### Facility service image" >> "$GITHUB_STEP_SUMMARY"
           echo "\`$IMAGE_URI\`" >> "$GITHUB_STEP_SUMMARY"
+
+  # config 설정
+  config:
+    name: Config service build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Build config service
+        run: >-
+          bash services/config-service/gradlew
+          -p services/config-service
+          clean build --no-daemon
+
+  publish-config:
+    name: Publish config image to ECR
+    needs: [backend, frontend, config]
+    if: >-
+      github.ref == 'refs/heads/develop' &&
+      (github.event_name == 'push' ||
+       github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      AWS_REGION: ap-northeast-2
+      ECR_REPOSITORY: team4/config-service
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::088153173875:role/team4-github-ecr-push
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push config image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          set -euo pipefail
+
+          IMAGE_TAG="sha-${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+
+          docker build --platform linux/amd64 \
+            -t "$IMAGE_URI" \
+            services/config-service
+
+          docker push "$IMAGE_URI"
+
+          echo "### Config service image" >> "$GITHUB_STEP_SUMMARY"
+          echo "$IMAGE_URI" >> "$GITHUB_STEP_SUMMARY"
