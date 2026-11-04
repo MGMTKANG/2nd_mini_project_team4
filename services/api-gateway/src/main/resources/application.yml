@@ -3,6 +3,11 @@ server:
   shutdown: graceful
 
 spring:
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
   application:
     name: api-gateway
   config:
@@ -12,6 +17,8 @@ spring:
   cloud:
     config:
       enabled: ${CONFIG_ENABLED:false}
+    bus:
+      enabled: ${BUS_ENABLED:false}
     gateway:
       server:
         webflux:
@@ -57,6 +64,12 @@ management:
     web:
       exposure:
         include: health,info,prometheus
+  health:
+    rabbit:
+      enabled: ${BUS_ENABLED:false}
+  info:
+    env:
+      enabled: true
   metrics:
     tags:
       application: ${spring.application.name}

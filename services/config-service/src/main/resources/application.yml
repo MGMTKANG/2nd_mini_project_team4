@@ -9,12 +9,23 @@ spring:
     default: native
   lifecycle:
     timeout-per-shutdown-phase: 20s
+  cloud:
+    bus:
+      enabled: ${BUS_ENABLED:false}
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
 
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,prometheus
+        include: health,info,prometheus,busrefresh
+  health:
+    rabbit:
+      enabled: ${BUS_ENABLED:false}
   metrics:
     tags:
       application: ${spring.application.name}
