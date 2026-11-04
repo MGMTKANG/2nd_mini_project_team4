@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: point-service
+  namespace: sporty
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: point-service
+  template:
+    metadata:
+      labels:
+        app: point-service
+    spec:
+      terminationGracePeriodSeconds: 40
+      containers:
+        - name: point-service
+          image: 088153173875.dkr.ecr.ap-northeast-2.amazonaws.com/team4/point-service:sha-b6fd7d4b8e02baa8ac8b1c4d3f4d3d63ce651e1e-41801325294-1
+          ports:
+            - name: http
+              containerPort: 8085
+          env:
+            - name: POINT_DB_URL
+              value: "jdbc:mariadb://172.31.38.169:3307/point_db?sslMode=verify-full"
+            - name: POINT_DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: sporty-db-dev-secret
+                  key: DB_USERNAME
+            - name: POINT_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sporty-db-dev-secret
+                  key: DB_PASSWORD
+            - name: POINT_JPA_DDL_AUTO
+              value: "validate"
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sporty-jwt-secret
+                  key: JWT_SECRET
+            - name: SPRING_PROFILES_ACTIVE
+              value: "dev"
+            - name: CONFIG_ENABLED
+              value: "false"
+            - name: EUREKA_ENABLED
+              value: "false"
+            - name: MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED
+              value: "true"
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
