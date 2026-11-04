@@ -80,19 +80,24 @@ curl -s http://localhost:8888/match-service/local; echo
 
 ### 동작 확인 (gateway 2대)
 
+모든 터미널은 저장소 루트에서 시작.
+
 ```bash
 # 1) RabbitMQ
 docker compose -f rabbitmq/compose.yml up -d
 
-# 2) config-service
+# 2) config-service (터미널 1)
 cd services/config-service && BUS_ENABLED=true ./gradlew bootRun
 
-# 3) gateway 2대 (bootRun 동시 실행 시 Gradle 락 충돌 → jar 사용, 터미널 각각)
+# 3) gateway 2대 (bootRun 동시 실행 시 Gradle 락 충돌 → jar 사용)
+#    jar 빌드 (1회)
 cd services/api-gateway && ./gradlew bootJar
-CONFIG_ENABLED=true BUS_ENABLED=true java -jar build/libs/api-gateway-0.0.1-SNAPSHOT.jar
-SERVER_PORT=8001 CONFIG_ENABLED=true BUS_ENABLED=true java -jar build/libs/api-gateway-0.0.1-SNAPSHOT.jar
+#    gateway 8000 (터미널 2)
+cd services/api-gateway && CONFIG_ENABLED=true BUS_ENABLED=true java -jar build/libs/api-gateway-0.0.1-SNAPSHOT.jar
+#    gateway 8001 (터미널 3)
+cd services/api-gateway && SERVER_PORT=8001 CONFIG_ENABLED=true BUS_ENABLED=true java -jar build/libs/api-gateway-0.0.1-SNAPSHOT.jar
 
-# 4) 현재 값 확인 → config-repo/api-gateway.yml 수정 → refresh → 재확인
+# 4) 현재 값 확인 → config-repo/api-gateway.yml 수정 → refresh → 재확인 (터미널 4)
 for port in 8000 8001; do printf "%s -> " $port; curl -s localhost:$port/actuator/info; echo; done
 curl -s -o /dev/null -w "%{http_code}\n" -X POST localhost:8888/actuator/busrefresh
 for port in 8000 8001; do printf "%s -> " $port; curl -s localhost:$port/actuator/info; echo; done
@@ -107,3 +112,11 @@ for port in 8000 8001; do printf "%s -> " $port; curl -s localhost:$port/actuato
 
 - RabbitMQ 관리 화면 Queues 탭: `springCloudBus.anonymous...` 큐가 인스턴스 수만큼 생성 (위 예시는 3개)
 - 시연 후 `config-repo/api-gateway.yml`은 원래 값(`v1 - from config-repo`)으로 복구 (변경값 커밋 금지)
+
+### 제한 사항 / 배포 시 주의
+
+| 항목 | 내용 | 대응 |
+|---|---|---|
+| refresh 유실 | 클라이언트가 브로커와 끊겨 있는 동안 발행된 refresh 이벤트는 재연결 후 재전달되지 않음 (익명 큐는 연결 종료 시 삭제) | 재연결 후 `busrefresh` 재호출 또는 해당 인스턴스 재시작 |
+| `busrefresh` 인증 없음 | 호출만 하면 전체 인스턴스 설정 갱신 가능 | Ingress·gateway 라우트로 **노출 금지**. K8s에서는 NetworkPolicy로 8888 포트를 클러스터 내부 접근만 허용 |
+| 브로커 통신 평문 | 로컬 기본값은 TLS 미사용 | 원격 브로커 사용 시 `SPRING_RABBITMQ_SSL_ENABLED=true`로 TLS 활성화, 계정은 환경변수·K8s Secret으로 주입 (`guest` 사용 금지) |
