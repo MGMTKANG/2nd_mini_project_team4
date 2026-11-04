@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+  namespace: sporty
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: user-service
+  template:
+    metadata:
+      labels:
+        app: user-service
+    spec:
+      terminationGracePeriodSeconds: 40
+      containers:
+        - name: user-service
+          image: 088153173875.dkr.ecr.ap-northeast-2.amazonaws.com/team4/user-service:sha-97dd0ce796331433c51418f36a97d0dc700e37a2-41780880959-1
+          ports:
+            - name: http
+              containerPort: 8081
+          env:
+            - name: USER_DB_URL
+              value: "jdbc:mariadb://172.31.38.169:3307/user_db?sslMode=verify-full"
+            - name: USER_DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: sporty-db-dev-secret
+                  key: DB_USERNAME
+            - name: USER_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sporty-db-dev-secret
+                  key: DB_PASSWORD
+            - name: USER_JPA_DDL_AUTO
+              value: "validate"
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sporty-jwt-secret
+                  key: JWT_SECRET
+            - name: REDIS_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: sporty-redis-dev-secret
+                  key: REDIS_HOST
+            - name: REDIS_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: sporty-redis-dev-secret
+                  key: REDIS_PORT
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sporty-redis-dev-secret
+                  key: REDIS_PASSWORD
+            - name: SPRING_PROFILES_ACTIVE
+              value: "dev"
+            - name: CONFIG_ENABLED
+              value: "false"
+            - name: EUREKA_ENABLED
+              value: "false"
+            - name: MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED
+              value: "true"
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
