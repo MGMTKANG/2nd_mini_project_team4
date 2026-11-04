@@ -15,6 +15,9 @@ spec:
         app: ai-service
     spec:
       terminationGracePeriodSeconds: 40
+      volumes:
+        - name: tmp
+          emptyDir: {}
       containers:
         - name: ai-service
           image: 088153173875.dkr.ecr.ap-northeast-2.amazonaws.com/team4/ai-service:sha-f5f8b45b2c0e8109d96da289d00c757a3fd12c7a-41843178376-1
@@ -65,3 +68,7 @@ spec:
             timeoutSeconds: 3
           securityContext:
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
