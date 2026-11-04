@@ -14,68 +14,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  backend:
-    name: Backend build and test
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    defaults:
-      run:
-        working-directory: backend/sporty
-    services:
-      mariadb:
-        image: mariadb:11.4
-        env:
-          MARIADB_DATABASE: sporty_ci
-          MARIADB_USER: sporty_ci
-          MARIADB_PASSWORD: ci-only-password
-          MARIADB_ROOT_PASSWORD: ci-only-root-password
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="healthcheck.sh --connect --innodb_initialized"
-          --health-interval=10s --health-timeout=5s --health-retries=10
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd="redis-cli ping"
-          --health-interval=10s --health-timeout=5s --health-retries=5
-    env:
-      SPRING_PROFILES_ACTIVE: dev
-      DB_DRIVER: org.mariadb.jdbc.Driver
-      DB_URL: jdbc:mariadb://localhost:3306/sporty_ci
-      DB_USERNAME: sporty_ci
-      DB_PASSWORD: ci-only-password
-      OPEN_AI_KEY: ci-placeholder-not-a-real-key
-      OPEN_AI_MODEL: gpt-4o-mini
-      JWT_SECRET_KEY: ci-only-jwt-secret-key-at-least-32-characters-long
-      OPENAPI_SERVICE_KEY: ci-placeholder
-      OPENAPI_CALLBACKURL: http://127.0.0.1
-      OPENAPI_TYPE: json
-      PUBLIC_DATA_API_KEY: ci-placeholder
-      PUBLIC_DATA_API_URL: http://127.0.0.1:9999
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-      - name: Build and run default tests
-        # build.gradle excludes integration-tagged tests from this task.
-        run: bash ./gradlew clean build --no-daemon
-      - name: Upload test reports
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: backend-test-reports
-          path: |
-            backend/sporty/build/reports/tests/
-            backend/sporty/build/test-results/
-          if-no-files-found: ignore
-
   frontend:
     name: Frontend build and test
     runs-on: ubuntu-latest
@@ -132,7 +70,7 @@ jobs:
   
   publish-match:
     name: Publish match image to ECR
-    needs: [backend, frontend, match]
+    needs: [frontend, match]
     if: >-
       github.ref == 'refs/heads/develop' &&
       (github.event_name == 'push' ||
@@ -295,7 +233,7 @@ jobs:
   
   publish-facility:
     name: Publish facility image to ECR
-    needs: [backend, frontend, facility]
+    needs: [frontend, facility]
     if: >-
       github.ref == 'refs/heads/develop' &&
       (github.event_name == 'push' ||
@@ -361,7 +299,7 @@ jobs:
 
   # config 설정
   config:
-    name: Config service build
+    name: Config service build and test
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -383,7 +321,7 @@ jobs:
 
   publish-config:
     name: Publish config image to ECR
-    needs: [backend, frontend, config]
+    needs: [frontend, config]
     if: >-
       github.ref == 'refs/heads/develop' &&
       (github.event_name == 'push' ||
