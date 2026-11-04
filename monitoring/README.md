@@ -65,6 +65,41 @@ http://localhost:3001 접속 후 `admin` / `admin` 로그인 (비밀번호 변�
 - 요청이 없는 구간은 에러율·p95가 `No data`로 표시 (정상)
 - 화면에서 수정 후 저장 불가 (`allowUiUpdates: false`). 변경은 JSON 파일 수정 후 `docker compose -f monitoring/compose.yml restart grafana`
 
+### 동작 확인 (정상 → 장애 → 복구)
+
+match-service의 공개 API `GET /api/matches`를 gateway 경유로 반복 호출하고, match-service 중지·재시작 시 지표 변화 확인. 모든 터미널은 저장소 루트에서 시작.
+
+```bash
+# 1) 모니터링 (터미널 1)
+docker compose -f monitoring/compose.yml up -d
+
+# 2) gateway (터미널 2)
+cd services/api-gateway && ./gradlew bootRun
+
+# 3) match-service + MariaDB (터미널 1). 최초 1회 .env 복사 (가짜 비밀값, git 제외 대상)
+cd services/match-service && cp -n .env.example .env
+docker compose -f compose.match-local.yml up -d --build
+
+# 4) 준비 확인 (터미널 1, 기동 후 1~2분)
+curl -s -o /dev/null -w "%{http_code}\n" localhost:8000/api/matches   # 200이면 준비 완료
+
+# 5) 트래픽 발생 (터미널 3, 확인 중 계속 실행 / 종료는 Ctrl+C)
+while true; do curl -s -o /dev/null -w "%{http_code} " localhost:8000/api/matches; sleep 0.5; done
+
+# 6) 장애 → 복구 (터미널 1, services/match-service 위치)
+docker compose -f compose.match-local.yml stop match-service
+docker compose -f compose.match-local.yml start match-service    # 장애 화면 확인 후 실행
+```
+
+| 단계 | 대시보드 변화 (반영까지 1~2분) |
+|---|---|
+| 정상 | 상태코드별 처리량에 `200`(초록), 5xx 에러율 0% |
+| 장애 (`stop`) | `200` 감소·`500`(빨강) 증가, 5xx 에러율 빨간 배경, 라우트별 5xx 에러율 `match-service` 100% |
+| 복구 (`start`) | 기동 완료(30초~1분) 후 `200`으로 복귀, 에러율 0%로 하락 |
+
+- 발표용 캡처는 우측 상단 시간 범위를 정상·장애·복구 구간 전체가 들어가도록 지정
+- 정리: `docker compose -f compose.match-local.yml down -v` (match 로컬 DB 볼륨 포함 삭제), `docker compose -f monitoring/compose.yml down`
+
 ### JVM 대시보드 (수동 Import)
 
 1. **Dashboards → New → Import** 에서 ID `4701` (JVM Micrometer) 입력 후 **Load**
@@ -72,6 +107,17 @@ http://localhost:3001 접속 후 `admin` / `admin` 로그인 (비밀번호 변�
 3. 상단 `application` 선택 상자에서 서비스별 지표 확인
 
 수동 Import한 대시보드는 컨테이너를 내리면 초기화됨 (`down` 후 재실행 시 다시 Import 필요).
+
+## 문제 해결
+
+| 증상 | 원인 / 조치 |
+|---|---|
+| `up` 시 `ports are not available ... bind: An attempt was made to access a socket in a way forbidden by its access permissions` | Windows(WinNAT)가 해당 포트(9090 등)를 예약 범위로 점유. `netsh interface ipv4 show excludedportrange protocol=tcp`로 확인 후 **관리자 PowerShell**에서 `net stop winnat` → `net start winnat`, 이후 다시 `up -d` |
+| `failed to connect to the docker API at npipe:...` | Docker Desktop 미실행. 실행 후 재시도 |
+| 대시보드 패널에 데이터소스 오류 또는 전체 `No data` | datasource 설정(uid) 변경이 기존 컨테이너에 미반영. `restart`가 아닌 `down` 후 `up -d` |
+| Prometheus targets에서 `api-gateway`(8000) `DOWN` | gateway 미실행 상태 |
+| p95 패널만 `No data` | gateway 재시작 전이라 histogram 미반영. `curl -s localhost:8000/actuator/prometheus \| grep -c '^spring_cloud_gateway_requests_seconds_bucket'` 결과가 0이면 gateway 재시작 |
+| gateway 경유 `/api/matches`가 `500` | match-service 미기동 또는 기동 중. `curl localhost:8082/actuator/health`로 직접 확인 |
 
 ## 서비스에 Prometheus 적용하기
 
