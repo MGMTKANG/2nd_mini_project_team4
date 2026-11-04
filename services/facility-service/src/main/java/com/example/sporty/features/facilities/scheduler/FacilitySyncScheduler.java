@@ -42,7 +42,11 @@ public class FacilitySyncScheduler {
         log.info("서울시 체육시설 동기화를 시작합니다. 실행 유형: {}", trigger);
 
         try {
-            SyncResult result = facilitySyncService.syncAll();
+            SyncResult result = facilitySyncService.syncAll().orElse(null);
+            if (result == null) {
+                log.info("{} 동기화 건너뜀. 다른 인스턴스에서 동기화 중입니다.", trigger);
+                return;
+            }
             log.info(
                     "{} 동기화 성공: 조회 {}, 신규 {}, 갱신 {}, 비활성화 {}, 제외 {}",
                     trigger,

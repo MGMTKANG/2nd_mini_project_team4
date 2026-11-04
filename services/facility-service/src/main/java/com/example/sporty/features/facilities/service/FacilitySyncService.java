@@ -1,6 +1,8 @@
 package com.example.sporty.features.facilities.service;
 
 import java.math.BigDecimal;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
@@ -11,10 +13,13 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.jdbc.core.ConnectionCallback;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -48,8 +53,46 @@ public class FacilitySyncService {
     private final LocationRepository locationRepository;
     private final ServiceRepository serviceRepository;
     private final TransactionTemplate transactionTemplate;
+    private final JdbcTemplate jdbcTemplate;
 
-    public SyncResult syncAll() {
+    public Optional<SyncResult> syncAll() {
+        return jdbcTemplate.execute((ConnectionCallback<Optional<SyncResult>>) connection -> {
+            int acquired = lockResult(connection,
+                    "SELECT GET_LOCK(CONCAT(DATABASE(), '.facility-sync'), 0)");
+            if (acquired == 0) {
+                return Optional.empty();
+            }
+
+            try {
+                return Optional.of(syncFacilities());
+            } finally {
+                try {
+                    if (lockResult(connection,
+                            "SELECT RELEASE_LOCK(CONCAT(DATABASE(), '.facility-sync'))") != 1) {
+                        throw new SQLException("시설 동기화 잠금 해제에 실패했습니다.");
+                    }
+                } catch (SQLException exception) {
+                    connection.abort(Runnable::run);
+                    throw exception;
+                }
+            }
+        });
+    }
+
+    private int lockResult(Connection connection, String sql) throws SQLException {
+        try (var statement = connection.createStatement();
+                var result = statement.executeQuery(sql)) {
+            if (result.next()) {
+                int value = result.getInt(1);
+                if (!result.wasNull()) {
+                    return value;
+                }
+            }
+            throw new SQLException("시설 동기화 잠금 상태를 확인할 수 없습니다.");
+        }
+    }
+
+    private SyncResult syncFacilities() {
         List<Row> rows = apiClient.fetchAll();
         if (rows.isEmpty()) {
             throw new IllegalStateException(
