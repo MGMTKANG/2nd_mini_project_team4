@@ -36,6 +36,83 @@ jobs:
       - run: npm test -- --watchAll=false --runInBand
       - run: npm run build
   
+  discovery:
+    name: Discovery service build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Build Discovery service
+        run: >-
+          bash services/service-discovery/gradlew
+          -p services/service-discovery
+          clean build --no-daemon
+
+  publish-discovery:
+    name: Publish Discovery image to ECR
+    needs: [frontend, discovery]
+    if: >-
+      github.ref == 'refs/heads/develop' &&
+      (github.event_name == 'push' ||
+       github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    outputs:
+      image_uri: ${{ steps.push-image.outputs.image_uri }}
+
+    permissions:
+      contents: read
+      id-token: write
+
+    env:
+      AWS_REGION: ap-northeast-2
+      ECR_REPOSITORY: team4/service-discovery
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::088153173875:role/team4-github-ecr-push
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push Discovery image
+        id: push-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          set -euo pipefail
+
+          IMAGE_TAG="sha-${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+
+          docker build --platform linux/amd64 \
+            -t "$IMAGE_URI" \
+            services/service-discovery
+
+          docker push "$IMAGE_URI"
+          echo "image_uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+
+          echo "### Discovery service image" >> "$GITHUB_STEP_SUMMARY"
+          echo "$IMAGE_URI" >> "$GITHUB_STEP_SUMMARY"
+
   match:
     name: Match service build and test
     runs-on: ubuntu-latest
@@ -135,8 +212,8 @@ jobs:
           echo "\`$IMAGE_URI\`" >> "$GITHUB_STEP_SUMMARY"
 
   update-deployments:
-    name: Update match, facility and user deployment images
-    needs: [publish-match, publish-facility, publish-user]
+    name: Update match, facility, user and config deployment images
+    needs: [publish-match, publish-facility, publish-user, publish-config]
     if: github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     permissions:
@@ -152,6 +229,7 @@ jobs:
           MATCH_IMAGE_URI: ${{ needs.publish-match.outputs.image_uri }}
           FACILITY_IMAGE_URI: ${{ needs.publish-facility.outputs.image_uri }}
           USER_IMAGE_URI: ${{ needs.publish-user.outputs.image_uri }}
+          CONFIG_IMAGE_URI: ${{ needs.publish-config.outputs.image_uri }}
         run: |
           set -euo pipefail
 
@@ -167,7 +245,7 @@ jobs:
           from pathlib import Path
 
           updates = {}
-          for service in ("match", "facility", "user"):
+          for service in ("match", "facility", "user", "config"):
               manifest = Path("k8s") / f"{service}-service" / "deployment.yaml"
               image_uri = os.environ[f"{service.upper()}_IMAGE_URI"]
               image_repo = f"088153173875.dkr.ecr.ap-northeast-2.amazonaws.com/team4/{service}-service"
@@ -190,14 +268,14 @@ jobs:
               manifest.write_text(updated)
           PY
 
-          if git diff --quiet -- k8s/match-service/deployment.yaml k8s/facility-service/deployment.yaml k8s/user-service/deployment.yaml; then
+          if git diff --quiet -- k8s/match-service/deployment.yaml k8s/facility-service/deployment.yaml k8s/user-service/deployment.yaml k8s/config-service/deployment.yaml; then
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- k8s/match-service/deployment.yaml k8s/facility-service/deployment.yaml k8s/user-service/deployment.yaml
-          git commit -m "chore(deploy): match·facility·user 이미지 갱신"
+          git add -- k8s/match-service/deployment.yaml k8s/facility-service/deployment.yaml k8s/user-service/deployment.yaml k8s/config-service/deployment.yaml
+          git commit -m "chore(deploy): match·facility·user·config 이미지 갱신"
           git push origin HEAD:refs/heads/develop
   facility:
     name: Facility service build and test
@@ -329,6 +407,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
+    outputs:
+      image_uri: ${{ steps.push-image.outputs.image_uri }}
+
     permissions:
       contents: read
       id-token: write
@@ -353,6 +434,7 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
       - name: Build and push config image
+        id: push-image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
         run: |
@@ -366,6 +448,7 @@ jobs:
             services/config-service
 
           docker push "$IMAGE_URI"
+          echo "image_uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
 
           echo "### Config service image" >> "$GITHUB_STEP_SUMMARY"
           echo "$IMAGE_URI" >> "$GITHUB_STEP_SUMMARY"
