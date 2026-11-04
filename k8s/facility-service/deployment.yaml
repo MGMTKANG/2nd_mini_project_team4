@@ -17,7 +17,7 @@ spec:
       terminationGracePeriodSeconds: 40
       containers:
         - name: facility-service
-          image: 088153173875.dkr.ecr.ap-northeast-2.amazonaws.com/team4/facility-service:sha-33b285df227ab4c81e89eab8ec2e8f24bb16463b-41771590511-1
+          image: 088153173875.dkr.ecr.ap-northeast-2.amazonaws.com/team4/facility-service:sha-b92960037f9498a30de4846f65d197063618e659-41775610961-1
           ports:
             - name: http
               containerPort: 8083
