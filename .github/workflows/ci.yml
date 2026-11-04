@@ -404,7 +404,7 @@ jobs:
 
   publish-user:
     name: Publish user image to ECR
-    needs: [backend, frontend, user]
+    needs: [frontend, user]
     if: >-
       github.ref == 'refs/heads/develop' &&
       (github.event_name == 'push' ||
