@@ -1,0 +1,30 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kafka-internal-only
+  namespace: sporty
+spec:
+  podSelector:
+    matchLabels:
+      app: kafka
+  policyTypes: [Ingress]
+  ingress:
+    # podSelector without namespaceSelector means only Pods in the sporty namespace.
+    - from:
+        - podSelector:
+            matchExpressions:
+              - key: app
+                operator: In
+                values: [user-service, match-service, kafka-topic-init]
+      ports:
+        - protocol: TCP
+          port: 9092
+    - from:
+        - podSelector:
+            matchLabels:
+              app: kafka
+      ports:
+        - protocol: TCP
+          port: 9092
+        - protocol: TCP
+          port: 9093
