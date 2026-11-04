@@ -25,7 +25,7 @@ spec:
               workload-group: sporty-apps
       containers:
         - name: service-discovery
-          image: 088153173875.dkr.ecr.ap-northeast-2.amazonaws.com/team4/service-discovery:sha-01e4fd9d4bb510aacaa91f2f4d7347654c4d0c7f-41798232473-1
+          image: 088153173875.dkr.ecr.ap-northeast-2.amazonaws.com/team4/service-discovery:sha-507d2ef4972afc9bb7e0ed1ebb94882b7e0d1121-41894500082-1
           ports:
             - name: http
               containerPort: 8761
