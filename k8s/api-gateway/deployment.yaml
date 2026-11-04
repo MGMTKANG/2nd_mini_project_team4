@@ -44,6 +44,8 @@ spec:
               value: "http://match-service:8082"
             - name: FACILITY_SERVICE_URL
               value: "http://facility-service:8083"
+            - name: AI_SERVICE_URL
+              value: "http://ai-service:8084"
             - name: POINT_SERVICE_URL
               value: "http://point-service:8085"
             - name: MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED
