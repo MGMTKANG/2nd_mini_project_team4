@@ -2,6 +2,7 @@ apiVersion: 1
 
 datasources:
   - name: Prometheus
+    uid: prometheus   # 대시보드 JSON에서 이 uid로 참조
     type: prometheus
     access: proxy
     url: http://prometheus:9090
