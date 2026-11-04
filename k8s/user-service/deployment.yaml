@@ -13,8 +13,16 @@ spec:
     metadata:
       labels:
         app: user-service
+        workload-group: sporty-apps
     spec:
       terminationGracePeriodSeconds: 40
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              workload-group: sporty-apps
       containers:
         - name: user-service
           image: 088153173875.dkr.ecr.ap-northeast-2.amazonaws.com/team4/user-service:sha-d48c7168ba7cb1927e2c0ba45223d954d52edbe1-41814689587-1
