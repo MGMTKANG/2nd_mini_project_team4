@@ -1,8 +1,11 @@
 package com.example.sporty.features.users.service;
 
+import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,6 +23,7 @@ import com.example.sporty.features.users.domain.dto.UserInfoResponseDto;
 import com.example.sporty.features.users.domain.dto.UserResponseDto;
 import com.example.sporty.features.users.domain.dto.UserSignUpRequestDto;
 import com.example.sporty.features.users.domain.entity.UserEntity;
+import com.example.sporty.features.users.event.UserWithdrawnEvent;
 import com.example.sporty.features.users.repository.UserRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -35,6 +39,7 @@ public class UserService {
     private final SportPreferenceRepository sportPreferenceRepository;
     private final RefreshTokenService refreshTokenService;
     private final PasswordEncoder passwordEncoder;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
     public UserResponseDto signUp(UserSignUpRequestDto request) {
@@ -100,6 +105,8 @@ public class UserService {
 
         user.withdraw();
         refreshTokenService.delete(userId);
+        // Kafka 발행은 트랜잭션 커밋 후 리스너에서 처리한다.
+        eventPublisher.publishEvent(new UserWithdrawnEvent(userId, UUID.randomUUID(), Instant.now()));
 
         log.info("회원 탈퇴 처리 완료: userId={}", userId);
     }
