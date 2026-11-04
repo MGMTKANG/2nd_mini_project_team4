@@ -60,7 +60,7 @@ public class PointAccountEntity {
     }
 
     public void refund(Long amount) {
-        this.balance += amount;
+        this.balance = Math.addExact(this.balance, amount);
     }
 
     public boolean hasAtLeast(Long amount) {

@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.example.sporty.features.points.domain.dto.PointAmountRequestDto;
+import com.example.sporty.features.points.domain.dto.PointCancelRequestDto;
 import com.example.sporty.features.points.domain.dto.PointBalanceResponseDto;
 import com.example.sporty.features.points.service.PointService;
 
@@ -31,7 +32,7 @@ public class PointInternalController {
             @PathVariable("userId") Long userId,
             @Valid @RequestBody PointAmountRequestDto request
     ) {
-        return ResponseEntity.ok(new PointBalanceResponseDto(pointService.deduct(userId, request.amount())));
+        return ResponseEntity.ok(new PointBalanceResponseDto(pointService.deduct(userId, request.amount(), request.operationId())));
     }
 
     @Operation(summary = "포인트 환불 (Feign 전용)", description = "펀딩 실패(정원 미달) 보상 트랜잭션에서 참가비를 환불한다.")
@@ -40,6 +41,14 @@ public class PointInternalController {
             @PathVariable("userId") Long userId,
             @Valid @RequestBody PointAmountRequestDto request
     ) {
-        return ResponseEntity.ok(new PointBalanceResponseDto(pointService.refund(userId, request.amount())));
+        return ResponseEntity.ok(new PointBalanceResponseDto(pointService.refund(userId, request.amount(), request.operationId())));
+    }
+    @Operation(summary = "차감 작업 취소", description = "원차감 operationId로 정확히 한 번 보상한다. 차감보다 먼저 도착하면 차감을 차단한다.")
+    @PostMapping("/{userId}/cancel")
+    public ResponseEntity<PointBalanceResponseDto> cancel(
+            @PathVariable("userId") Long userId,
+            @Valid @RequestBody PointCancelRequestDto request
+    ) {
+        return ResponseEntity.ok(new PointBalanceResponseDto(pointService.cancel(userId, request.amount(), request.operationId())));
     }
 }
