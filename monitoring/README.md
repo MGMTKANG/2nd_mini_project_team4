@@ -137,7 +137,7 @@ docker compose -f compose.match-local.yml start match-service    # 30초 정도 
 
 - VU 1명당 초당 약 1회 요청 (`sleep(1)`) → 50 VU 구간은 약 50 RPS
 - 대상 주소 기본값 `http://host.docker.internal:8000` (컨테이너 안의 `localhost`는 내 PC가 아님). 변경 시 `-e BASE_URL=...`
-- 결과 요약의 `http_req_failed`, `http_req_duration`의 `p(95)` 확인. 기준 통과 시 `✓`, 미달 시 `✗` 표시 및 종료 코드 99 (K-3은 미달이 정상)
+- 결과 요약의 `http_req_failed`, `http_req_duration`의 `p(95)`, `checks`(상태 `200` 비율) 확인. 요청 timeout 5초 (응답 없는 요청도 실패로 기록). 기준 통과 시 `✓`, 미달 시 `✗` 표시 및 종료 코드 99 (K-3은 미달이 정상)
 - 발표용 캡처는 대시보드 시간 범위를 테스트 구간 전체로 지정
 
 ## 문제 해결

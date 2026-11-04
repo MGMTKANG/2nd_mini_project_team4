@@ -16,6 +16,7 @@ const profiles = {
     thresholds: {
       http_req_failed: ['rate==0'],
       http_req_duration: ['p(95)<500'],
+      checks: ['rate==1'], // 상태 검사(200) 실패도 합격 판정에 반영
     },
   },
   load: {
@@ -29,6 +30,7 @@ const profiles = {
     thresholds: {
       http_req_failed: ['rate<0.01'],
       http_req_duration: ['p(95)<1000'],
+      checks: ['rate>0.99'],
     },
   },
 };
@@ -42,6 +44,7 @@ export const options = profiles[PROFILE];
 export default function () {
   const res = http.get(`${BASE_URL}/api/matches`, {
     tags: { name: 'GET /api/matches' },
+    timeout: '5s', // 기본 60초는 종료 유예(30초)보다 길어 응답 없는 요청이 실패로 기록되지 않음
   });
   check(res, { 'status is 200': (r) => r.status === 200 });
   sleep(1); // VU 1명당 초당 약 1회 요청
