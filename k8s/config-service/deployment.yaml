@@ -17,7 +17,7 @@ spec:
       terminationGracePeriodSeconds: 40
       containers:
         - name: config-service
-          image: 088153173875.dkr.ecr.ap-northeast-2.amazonaws.com/team4/config-service:sha-76aa79f5d2a5d9f88c0ab81ed236f11920941ff7-41806297225-1
+          image: 088153173875.dkr.ecr.ap-northeast-2.amazonaws.com/team4/config-service:sha-d48c7168ba7cb1927e2c0ba45223d954d52edbe1-41814689587-1
           ports:
             - name: http
               containerPort: 8888
