@@ -63,6 +63,8 @@ spec:
               value: http://user-service:8081
             - name: FACILITY_SERVICE_URL
               value: http://facility-service:8083
+            - name: POINT_SERVICE_URL
+              value: http://point-service:8085
             - name: MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED
               value: "true"
           startupProbe:
