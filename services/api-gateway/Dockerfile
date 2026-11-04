@@ -1,4 +1,4 @@
-FROM gradle:9.7.1-jdk17 AS builder
+FROM gradle:8.14-jdk17 AS builder
 USER gradle
 WORKDIR /home/gradle
 COPY --chown=gradle:gradle build.gradle settings.gradle ./
