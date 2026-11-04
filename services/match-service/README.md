@@ -18,7 +18,7 @@ MATCH_DB_USERNAME=... MATCH_DB_PASSWORD=... ./gradlew bootRun
 - Docker(매치 단독 로컬용): 위의 `cd services/match-service` 실행 후 `cp .env.example .env`로 가짜 비밀값을 복사하고 필요시 수정한다(`.env`는 Git·이미지 빌드에서 제외).
 - 기동: `docker compose -f compose.match-local.yml up -d --build` (MariaDB 헬스체크 통과 후 매치 시작, 매치 컨테이너 메모리 512MiB 제한).
 - 확인: `docker compose -f compose.match-local.yml ps`, `curl -i http://localhost:8082/actuator/health` → 비로그인 `200`·`{"status":"UP"}` 예상. `curl -i http://localhost:8082/api/matches` → 초기 빈 DB는 비로그인 `200`·`[]` 예상. HTTP 확인은 앱 기동 완료 후 실행한다.
-- 유저·체육시설 URL은 기본값(`http://localhost:8081`, `http://localhost:8083`)이며 연결되지 않는다. `curl -i 'http://localhost:8082/api/matches?isFree=true'` 같은 원격 호출은 `503 / EXTERNAL_SERVICE_UNAVAILABLE`이 정상이며, 기존 매치가 있으면 기본 목록도 시설 조회로 `503`이 될 수 있다.
+- 유저·체육시설 URL은 기본값(`http://localhost:8081`, `http://localhost:8083`)이며 연결되지 않는다. `curl -i 'http://localhost:8082/api/matches?isFree=true'`처럼 시설 검색 조건을 확인하는 호출은 `503 / EXTERNAL_SERVICE_UNAVAILABLE`이 정상이다. 기본 목록·상세는 기존 매치가 있어도 `200`이며, 장애가 난 시설·프로필 필드만 `null`로 반환한다. 내 매치도 시설 장애에는 부분 응답하지만 로그인 회원 확인 장애에는 `503`이다.
 - 정리: `docker compose -f compose.match-local.yml down -v` (로컬 DB 볼륨도 삭제).
 
 | 환경 변수 | 기본값 | 설명 |
@@ -179,15 +179,21 @@ SQL은 모두 `CREATE TABLE IF NOT EXISTS`·`ENGINE=InnoDB`이며 데이터 삭�
 ### 원본과 달라진 동작
 
 - 체육시설 서비스 응답에 해당 시설이 없으면 목록·내 매치·상세의 시설 조회 필드는 `null`로 반환한다. 상세의 `serviceId`는 시설 응답의 숫자 `id`로 채우며 시설을 찾지 못하면 `null`이다. 원본은 시설 FK/JOIN을 전제로 한다.
-- 유저·체육시설 호출의 HTTP 오류·연결 실패·타임아웃·JSON 해석 실패와 필수 필드 누락은 `503`, `{"code":"EXTERNAL_SERVICE_UNAVAILABLE","message":"..."}`로 반환한다. 회원 단건 조회 404는 기존처럼 빈 결과로 처리한다(생성·참가 시 `401 / MATCH_USER_NOT_FOUND`). 운영 Feign 타임아웃은 연결 1000ms·응답 3000ms이며, 생성·참가의 원격 확인은 로컬 행 잠금 전에 수행한다. 동시 오류의 응답 우선순위는 위 표와 같다.
+- 유저·체육시설 호출의 HTTP 오류·연결 실패·타임아웃·JSON 해석 실패와 필수 필드 누락은 `ExternalServiceUnavailableException`으로 매핑하며, 아래 기준으로 부분 응답 또는 `503 / EXTERNAL_SERVICE_UNAVAILABLE`을 반환한다. 회원 단건 조회 404는 기존처럼 빈 결과로 처리한다(생성·참가 시 `401 / MATCH_USER_NOT_FOUND`). 운영 Feign 타임아웃은 연결 1000ms·응답 3000ms이며, 생성·참가의 원격 확인은 로컬 행 잠금 전에 수행한다. 동시 오류의 응답 우선순위는 위 표와 같다.
+  - 목록·내 매치의 시설 정보 조합: 장애 시 시설 필드만 `null`인 `200`. 매치 목록·참가 인원·역할은 유지한다. 내 매치의 로그인 회원 확인(`findUser`) 장애는 `503`이다.
+  - 상세·수정 응답 조합: 프로필·시설을 각각 조회하며, 실패한 쪽의 필드만 `null`인 `200`. 시설 필드는 `serviceId`, `serviceName`, `locationName`, `region`, 프로필 필드는 `profileId`, `nickname`, `imageUrl`이다. 둘 다 실패하면 둘 다 비우고, 참가 인원·역할·`isOwner`·`isParticipant`는 유지한다.
+  - 검색 조건의 숫자 `serviceId` 확인(`findServiceById`)·지역/무료 필터(`searchServiceIds`), 생성·참가의 회원·시설 확인: 장애 시 `503`. 생성·참가는 매치·참가자를 저장하지 않는다.
+  - 부분 응답은 `ExternalServiceUnavailableException`만 처리하고 서비스 이름을 WARN 로그에 남긴다(요청 원문·원인 예외는 기록하지 않음). 다른 예외는 전파하며 포인트 차감·환불 실패 처리도 유지한다.
 - 인증이 필요한 경로에서 토큰이 없거나 손상·만료·Refresh 토큰으로 인증에 실패하면 `401`, `{"code":"UNAUTHORIZED","message":"인증에 실패했습니다."}`를 JSON·UTF-8로 반환한다. 도메인의 회원 없음·탈퇴 오류 코드는 각각 `MATCH_USER_NOT_FOUND`·`USER_WITHDRAWN`을 유지한다. 공개 상세 조회의 잘못된 토큰은 기존처럼 비로그인으로 처리한다.
 - `read-timeout`은 호출 1건의 응답 대기 상한이며 전체 요청·잠금 점유 시간의 상한은 아니다. 잠금 안에서 원격 호출을 여러 번 하면(예: 수정 응답의 프로필→시설 순차 조회) 대기 시간이 합쳐질 수 있다.
-- 매치 수정 후 응답 조합의 프로필→시설 원격 조회는 여전히 매치 행 잠금 안에서 실행한다. 원격 장애가 나면 같은 트랜잭션 경계 안에서 처리해 수정을 커밋하고 `200`을 반환한다. 이때 시설 조회 필드(`serviceId`, `serviceName`, `locationName`, `region`)와 참가자 프로필 필드(`profileId`, `nickname`, `imageUrl`)는 `null`이며 참가 인원·역할·권한은 유지한다. 생성·참가는 저장 전 원격 확인에 실패하면 `503`이며 매치·참가자를 저장하지 않는다.
+- 매치 수정 후 응답 조합의 프로필→시설 원격 조회는 여전히 매치 행 잠금 안에서 순차 실행한다. 한쪽의 원격 장애가 나도 다른 쪽 조회를 수행한다. 같은 트랜잭션 경계 안에서 장애를 처리해 수정을 커밋하고 위 부분 응답 규칙으로 `200`을 반환한다.
 - 회원 탈퇴 정리 메서드 `removeMatchesForWithdrawal`은 `UserWithdrawn` Kafka 처리 서비스에서 호출한다. 기본값은 수신 비활성이며, 실제 유저 서비스·Kafka와의 연동은 아직 검증하지 않았다.
 
 ## 검증
 
 **최종 실행(2026-11-02, Docker MariaDB 11.4.8 포함): `gradle cleanTest test` 248개 통과, 실패·오류·건너뜀 0개. 실제 MariaDB 19개(운영 스키마 4개 포함), EmbeddedKafka 10개, 기본 시간대 변경 회귀 2개를 포함한다.**
+
+2026-11-04 조회 부분 응답 변경 후 실행(Docker MariaDB 포함): `./gradlew clean test` 305개 중 304개 통과, 건너뜀 0개. 실패 1개는 develop에 이미 있던 `MatchSchemaMariaDBIntegrationTest.deploymentSqlMatchesEntityConstraints`(포인트 칸 `target_points`·`contribution_points` 미반영)로, PR #44에서 따로 고친다.
 
 Docker가 없으면 MariaDB 통합 테스트는 실패가 아니라 건너뜀으로 끝난다. 통과 개수만 보지 말고 `build/reports/tests/test/index.html`에서 건너뜀이 0개인지 함께 확인한다.
 
@@ -199,7 +205,7 @@ Docker가 없으면 MariaDB 통합 테스트는 실패가 아니라 건너뜀으
 | 잠금 경합 | `MatchLockContentionIntegrationTest` (H2) | 한 트랜잭션이 매치 행 잠금을 잡은 동안 수정·참가·삭제가 실제로 기다리고, 잠금이 풀린 뒤 최종 상태가 맞음 |
 | 회원 탈퇴 정리 | `MatchWithdrawalIntegrationTest` | OWNER 매치 삭제, 본인 참가만 취소, 마감 재개, 시작 후 마감 유지, ID 조회 뒤 커밋된 정원 수정 보존 |
 | Feign HTTP 계약 | `FeignUserClientHttpTest`, `FeignFacilityClientHttpTest` | 실제 Feign과 JDK 내장 HTTP 스텁으로 경로, 반복 ID 쿼리, 한글·선택 파라미터, JSON 매핑, 404/500, 시간 초과, 빈 입력 시 요청 생략 확인. 연결 1초/응답 1500ms는 테스트 전용 값 |
-| 원격 장애 | `MatchRemoteFailureHttpIntegrationTest`, `MatchModifyConnectionFailureHttpIntegrationTest` | 5xx·연결 실패·시간 초과·JSON 오류 시 503, 생성·참가는 저장 안 함과 재시도 가능, 수정은 커밋하고 시설·프로필 필드만 null. 원인 예외까지 단언 |
+| 원격 장애 | `MatchRemoteFailureHttpIntegrationTest`, `MatchModifyConnectionFailureHttpIntegrationTest` | 목록·내 매치의 시설 500, 상세·수정의 프로필/시설 500에 200 부분 응답과 정상인 쪽 정보 보존을 단언. 수정의 연결 실패·시간 초과·JSON 오류도 커밋하며 프로필 유지. 검색 조건·회원 확인 및 생성·참가의 503/저장 안 함 계약 유지. 원인 예외 단언 포함 |
 | 설정 | `MatchServiceApplicationTests`, `CloudProfileConfigurationTest`, `FeignTimeoutConfigurationTest`, `FeignDiscoveryClientHttpTest` | 전체 컨텍스트 기동, Eureka·Config·Kafka 기본 꺼짐, health/info·probe 공개와 다른 Actuator 경로 비노출, 프로필별 설정, 운영 Feign 타임아웃, Eureka 없이 서비스 이름 기반 Feign 호출 |
 | Kafka 탈퇴 수신 | `UserWithdrawnKafkaIntegrationTest`, `UserWithdrawnKafkaStartupIntegrationTest` (EmbeddedKafka) | 정상 정리, 같은 ID 중복, 잘못된 메시지 건너뜀, 동시 PK 충돌, 일시 장애 동안 같은 파티션 대기와 복구 후 처리, 프로그래밍 오류 동안 오프셋 보존 및 복구 후 정상 처리, 실제 그룹 오프셋 확정, 리스너가 꺼져 있던 동안 발행된 이벤트를 `earliest`로 처리 |
 | 실제 MariaDB | `MatchMariaDBIntegrationTest`, `MatchUserGuardMariaDBIntegrationTest`, `MatchSchemaMariaDBIntegrationTest` (Testcontainers) | 격리 수준·매치 잠금·이벤트 중복, 쓰기/탈퇴 선점 경합, 회원·시설 원격 조회 중 잠금 취득·탈퇴 커밋과 오래된 ACTIVE 거절, 전체 SQL만 적용한 validate 기동·제약 검증·데이터 보존, 두 추가 SQL의 보조 테이블 복원·이력/탈퇴 상태 보존 |
@@ -262,7 +268,7 @@ Docker 수동 확인(PR #5·#6 시점, Apple Silicon): 이미지 빌드, 비루�
 - **회원 탈퇴 연동:** `UserWithdrawn` 구독·처리 이력·무제한 재시도 경계를 추가했다(기본 비활성). 유저 서비스 발행·토픽 준비 후 실제 연동 확인이 필요하다.
 - **AI 서비스 연동:** 원본 AI는 `MatchService.searchMatches`와 참가 여부 조회를 직접 썼다. AI 서비스가 `GET /api/matches`를 쓰고, 추천의 "이미 참가한 매치 제외"는 별도 조건이 필요하다.
 - **생성·참가의 원격 호출 위치 — 반영:** 원격 회원·시설 확인을 로컬 행 잠금 앞으로 옮겼다. 원격 조회 중 탈퇴가 커밋되어도 쓰기 직전 로컬 guard가 오래된 ACTIVE를 거절한다. 동시 오류의 응답 우선순위는 위 표와 같으며, 수정 응답의 원격 조회는 여전히 매치 잠금 안에 남아 있다.
-- **다른 서비스 장애 시 처리:** 매치 서비스는 `503 / EXTERNAL_SERVICE_UNAVAILABLE` 매핑과 운영 Feign 연결 1000ms·응답 3000ms 적용을 완료했다. Circuit Breaker·Fallback(선택 요구사항 5번)은 추가 검토한다.
+- **다른 서비스 장애 시 처리:** 조회·수정 응답 조합은 장애가 난 원격 정보만 비우는 부분 응답을 적용했다. 검색 조건·회원 확인·생성·참가의 원격 확인은 `503 / EXTERNAL_SERVICE_UNAVAILABLE`을 유지한다. 운영 Feign 연결 1000ms·응답 3000ms이며, Circuit Breaker 도입(선택 요구사항 5번)은 추가 검토한다.
 - **수정·참가·삭제 경합 테스트 — 완료:** `MatchLockContentionIntegrationTest`에서 A의 실제 행 잠금 획득 후 B의 조회 반환·서비스 완료가 400ms 동안 대기하고, A 커밋 후 일관된 결과가 저장되는지 단언한다(테스트 H2 `LOCK_TIMEOUT=10000`).
 - **회원 탈퇴 정리의 최신 조회 — 완료:** 엔티티 대신 매치 ID만 오름차순으로 조회한 뒤 잠금 후 읽은 매치·참가 정보로 정리하며, OWNER 삭제·본인만 참가 취소·마감 재개·시작 후 마감 유지와 ID 조회 사이에 커밋된 정원 수정 보존 테스트를 추가했다. 호출 경계의 영속성 컨텍스트 공유는 Kafka 처리 경계의 새 트랜잭션으로 해결했고, ID 수집 후 커밋된 참가자·정원 변경 반영은 실제 MariaDB로 확인했다.
 - **수정 응답 장애 테스트 — 완료:** 실제 Feign의 시설 시간 초과·JSON 오류·연결 거부에서도 수정 200·DB 반영·시설 필드 null을 단언하고, 프로필 정상/시설 500은 시설 요청 기록까지 확인한다. 시간 초과·JSON 오류·연결 거부의 실제 원인 예외(`SocketTimeoutException`, `DecodeException`, `ConnectException`)도 단언한다.

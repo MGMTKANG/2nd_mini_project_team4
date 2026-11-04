@@ -1,6 +1,7 @@
 package com.example.sporty.features.exerciseMatching.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.doAnswer;
@@ -223,12 +224,56 @@ class MatchRemoteFailureHttpIntegrationTest {
         assertThat(FACILITY_SERVICE.requests()).hasSize(1);
     }
 
-    @Test
-    void anonymousListFacilityLookupServerErrorReturnsUnavailable() throws Exception {
-        createMatch();
+    @ParameterizedTest
+    @ValueSource(strings = {"", "강남"})
+    void anonymousListFacilityLookupServerErrorReturnsPartialResponse(String region) throws Exception {
+        Long matchId = createMatch();
         FACILITY_SERVICE.stub("/internal/facility-services", 500, "{}");
 
-        assertUnavailable(mvc.perform(get("/api/matches").param("region", "강남")), "facility-service");
+        mvc.perform(get("/api/matches").param("region", region))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].matchId").value(matchId))
+                .andExpect(jsonPath("$[0].title").value("기존 제목"))
+                .andExpect(jsonPath("$[0].numCurrentParticipant").value(1))
+                .andExpect(jsonPath("$[0].region").value(nullValue()))
+                .andExpect(jsonPath("$[0].isFree").value(nullValue()))
+                .andExpect(jsonPath("$[0].reservationDeadlineAt").value(nullValue()));
+    }
+
+    @Test
+    void myMatchesFacilityServerErrorReturnsPartialResponse() throws Exception {
+        Long matchId = createMatch();
+        FACILITY_SERVICE.stub("/internal/facility-services", 500, "{}");
+
+        mvc.perform(get("/api/matches/me").header("Authorization", bearer(1L)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].matchId").value(matchId))
+                .andExpect(jsonPath("$[0].title").value("기존 제목"))
+                .andExpect(jsonPath("$[0].numCurrentParticipant").value(1))
+                .andExpect(jsonPath("$[0].role").value("OWNER"))
+                .andExpect(jsonPath("$[0].region").value(nullValue()))
+                .andExpect(jsonPath("$[0].facilityName").value(nullValue()))
+                .andExpect(jsonPath("$[0].isFree").value(nullValue()));
+    }
+
+    @Test
+    void myMatchesUserLookupServerErrorStillReturnsUnavailable() throws Exception {
+        createMatch();
+        USER_SERVICE.stub("/internal/users/1", 500, "{}");
+
+        assertUnavailable(mvc.perform(get("/api/matches/me").header("Authorization", bearer(1L))),
+                "user-service");
+    }
+
+    @Test
+    void createUserServerErrorDoesNotSaveMatchOrParticipant() throws Exception {
+        USER_SERVICE.stub("/internal/users/1", 500, "{}");
+
+        assertUnavailable(createRequest(), "user-service");
+        assertDatabaseEmpty();
+        assertThat(FACILITY_SERVICE.requests()).isEmpty();
     }
 
     @Test
@@ -272,42 +317,39 @@ class MatchRemoteFailureHttpIntegrationTest {
 
     @ParameterizedTest
     @CsvSource({"500,200", "200,500", "500,500"})
-    void modifyRemoteServerErrorsCommitAndClearDecorations(int profileStatus, int facilityStatus)
+    void modifyRemoteServerErrorsCommitAndKeepHealthyDecorations(int profileStatus, int facilityStatus)
             throws Exception {
         Long matchId = createJoinedMatchForModification();
         USER_SERVICE.stub("/internal/users/profiles", profileStatus, profileStatus == 200 ? PROFILES_JSON : "{}");
         FACILITY_SERVICE.stub("/internal/facility-services", facilityStatus,
                 facilityStatus == 200 ? FACILITY_JSON : "{}");
 
-        assertModificationCommittedWithoutDecorations(matchId, modification());
+        assertModificationCommittedWithPartialDecorations(matchId, modification(), profileStatus == 200,
+                facilityStatus == 200);
         assertThat(USER_SERVICE.requests()).extracting(LocalHttpStub.Request::path)
                 .containsExactly("/internal/users/profiles");
-        if (profileStatus == 200) {
-            assertFacilityLookupRequested();
-        } else {
-            assertThat(FACILITY_SERVICE.requests()).isEmpty();
-        }
+        assertFacilityLookupRequested();
     }
 
     @Test
-    void modifyFacilityReadTimeoutCommitsAndClearsDecorations() throws Exception {
+    void modifyFacilityReadTimeoutCommitsAndKeepsProfiles() throws Exception {
         Long matchId = createJoinedMatchForModification();
         FACILITY_SERVICE.stub("/internal/facility-services", 200, FACILITY_JSON, Duration.ofSeconds(3));
         AtomicReference<ExternalServiceUnavailableException> failure = captureFacilityFailure();
 
-        assertModificationCommittedWithoutDecorations(matchId, modification());
+        assertModificationCommittedWithPartialDecorations(matchId, modification(), true, false);
         assertFacilityLookupRequested();
         assertThat(failure.get()).isNotNull().hasCauseInstanceOf(RetryableException.class)
                 .hasRootCauseInstanceOf(SocketTimeoutException.class);
     }
 
     @Test
-    void modifyMalformedFacilityJsonCommitsAndClearsDecorations() throws Exception {
+    void modifyMalformedFacilityJsonCommitsAndKeepsProfiles() throws Exception {
         Long matchId = createJoinedMatchForModification();
         FACILITY_SERVICE.stub("/internal/facility-services", 200, "[broken");
         AtomicReference<ExternalServiceUnavailableException> failure = captureFacilityFailure();
 
-        assertModificationCommittedWithoutDecorations(matchId, modification());
+        assertModificationCommittedWithPartialDecorations(matchId, modification(), true, false);
         assertFacilityLookupRequested();
         assertThat(failure.get()).isNotNull().hasCauseInstanceOf(DecodeException.class);
     }
@@ -325,27 +367,18 @@ class MatchRemoteFailureHttpIntegrationTest {
         return failure;
     }
 
-    private void assertModificationCommittedWithoutDecorations(Long matchId, MatchModifyRequestDto request)
-            throws Exception {
-        modify(matchId, request).andExpect(status().isOk())
+    private void assertModificationCommittedWithPartialDecorations(Long matchId, MatchModifyRequestDto request,
+            boolean hasProfiles, boolean hasFacility) throws Exception {
+        ResultActions result = modify(matchId, request).andExpect(status().isOk())
                 .andExpect(jsonPath("$.title").value(request.getTitle()))
-                .andExpect(jsonPath("$.serviceId").value(nullValue()))
-                .andExpect(jsonPath("$.serviceName").value(nullValue()))
-                .andExpect(jsonPath("$.locationName").value(nullValue()))
-                .andExpect(jsonPath("$.region").value(nullValue()))
                 .andExpect(jsonPath("$.currentParticipantCount").value(2))
                 .andExpect(jsonPath("$.status").value("CLOSED"))
                 .andExpect(jsonPath("$.isOwner").value(true))
                 .andExpect(jsonPath("$.isParticipant").value(true))
                 .andExpect(jsonPath("$.participants.length()").value(2))
                 .andExpect(jsonPath("$.participants[0].role").value("OWNER"))
-                .andExpect(jsonPath("$.participants[1].role").value("PARTICIPANT"))
-                .andExpect(jsonPath("$.participants[0].profileId").value(nullValue()))
-                .andExpect(jsonPath("$.participants[0].nickname").value(nullValue()))
-                .andExpect(jsonPath("$.participants[0].imageUrl").value(nullValue()))
-                .andExpect(jsonPath("$.participants[1].profileId").value(nullValue()))
-                .andExpect(jsonPath("$.participants[1].nickname").value(nullValue()))
-                .andExpect(jsonPath("$.participants[1].imageUrl").value(nullValue()));
+                .andExpect(jsonPath("$.participants[1].role").value("PARTICIPANT"));
+        assertDetailDecorations(result, hasProfiles, hasFacility);
 
         MatchEntity stored = matchRepository.findById(matchId).orElseThrow();
         assertThat(stored.getServiceId()).isEqualTo("S1");
@@ -470,12 +503,48 @@ class MatchRemoteFailureHttpIntegrationTest {
         assertThat(matchRepository.findById(matchId).orElseThrow().getServiceId()).isEqualTo("S1");
     }
 
-    @Test
-    void anonymousDetailProfileServerErrorStillReturnsUnavailable() throws Exception {
-        Long matchId = createMatch();
-        USER_SERVICE.stub("/internal/users/profiles", 500, "{}");
+    @ParameterizedTest
+    @CsvSource({"500,200", "200,500", "500,500"})
+    void detailRemoteServerErrorsKeepHealthyDecorationsAndParticipants(int profileStatus, int facilityStatus)
+            throws Exception {
+        Long matchId = createJoinedMatchForModification();
+        USER_SERVICE.stub("/internal/users/profiles", profileStatus, profileStatus == 200 ? PROFILES_JSON : "{}");
+        FACILITY_SERVICE.stub("/internal/facility-services", facilityStatus,
+                facilityStatus == 200 ? FACILITY_JSON : "{}");
 
-        assertUnavailable(mvc.perform(get("/api/matches/{id}", matchId)), "user-service");
+        for (long userId : new long[] {0, 1, 2}) {
+            var request = get("/api/matches/{id}", matchId);
+            if (userId != 0) request.header("Authorization", bearer(userId));
+            ResultActions result = mvc.perform(request)
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.matchId").value(matchId))
+                    .andExpect(jsonPath("$.title").value("기존 제목"))
+                    .andExpect(jsonPath("$.currentParticipantCount").value(2))
+                    .andExpect(jsonPath("$.participants.length()").value(2))
+                    .andExpect(jsonPath("$.participants[0].role").value("OWNER"))
+                    .andExpect(jsonPath("$.participants[1].role").value("PARTICIPANT"))
+                    .andExpect(jsonPath("$.isOwner").value(userId == 1))
+                    .andExpect(jsonPath("$.isParticipant").value(userId != 0));
+            assertDetailDecorations(result, profileStatus == 200, facilityStatus == 200);
+        }
+        assertThat(FACILITY_SERVICE.requests()).hasSize(3);
+        assertThat(USER_SERVICE.requests()).extracting(LocalHttpStub.Request::path)
+                .containsExactly("/internal/users/profiles", "/internal/users/profiles", "/internal/users/profiles");
+        assertThat(matchRepository.findById(matchId).orElseThrow().getServiceId()).isEqualTo("S1");
+    }
+
+    private void assertDetailDecorations(ResultActions result, boolean hasProfiles, boolean hasFacility)
+            throws Exception {
+        result.andExpect(jsonPath("$.serviceId").value(hasFacility ? is(1) : nullValue()))
+                .andExpect(jsonPath("$.serviceName").value(hasFacility ? is("풋살장") : nullValue()))
+                .andExpect(jsonPath("$.locationName").value(hasFacility ? is("강남체육관") : nullValue()))
+                .andExpect(jsonPath("$.region").value(hasFacility ? is("강남구") : nullValue()))
+                .andExpect(jsonPath("$.participants[0].profileId").value(hasProfiles ? is(10) : nullValue()))
+                .andExpect(jsonPath("$.participants[0].nickname").value(hasProfiles ? is("방장") : nullValue()))
+                .andExpect(jsonPath("$.participants[0].imageUrl").value(hasProfiles ? is("/owner.png") : nullValue()))
+                .andExpect(jsonPath("$.participants[1].profileId").value(hasProfiles ? is(20) : nullValue()))
+                .andExpect(jsonPath("$.participants[1].nickname").value(hasProfiles ? is("참가자") : nullValue()))
+                .andExpect(jsonPath("$.participants[1].imageUrl").value(hasProfiles ? is("/participant.png") : nullValue()));
     }
 
     private Exception assertUnavailable(ResultActions result, String serviceName) throws Exception {
