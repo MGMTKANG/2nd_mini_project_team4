@@ -38,6 +38,18 @@ public class ProfileService {
         return ProfileDetailResponseDto.fromEntity(profile, sports);
     }
 
+    @Transactional(readOnly = true)
+    public ProfileDetailResponseDto getProfileById(Long profileId) {
+        ProfileEntity profile = profileRepository.findById(profileId)
+                .orElseThrow(() -> new ProfileNotFoundException("프로필이 존재하지 않습니다."));
+
+        List<SportType> sports = sportPreferenceRepository.findByProfileId(profile.getId()).stream()
+                .map(SportPreferenceEntity::getSportType)
+                .toList();
+
+        return ProfileDetailResponseDto.fromEntity(profile, sports);
+    }
+
     @Transactional
     public ProfileUpdateResponseDto updateProfile(Long userId, ProfileUpdateRequestDto request) {
         ProfileEntity profile = profileRepository.findByUserId(userId)

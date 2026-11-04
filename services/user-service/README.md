@@ -69,3 +69,11 @@ Kafka와 토픽을 준비한 뒤 `USER_KAFKA_ENABLED=true`, `KAFKA_BOOTSTRAP_SER
 검증 명령: `cd services/user-service && bash ./gradlew clean test`. 테스트 구성은 JSON 계약·실패 격리 단위 테스트, H2 커밋/롤백·비활성 통합 테스트, 실제 토픽의 키·값을 확인하는 EmbeddedKafka 통합 테스트다.
 
 2026-11-04 검증(로컬 macOS, JDK 17): `bash ./gradlew clean test` **17개 통과·실패 0·건너뜀 0** (단위 6, H2 트랜잭션 5, 비활성/로그 2, EmbeddedKafka 1, 기존 컨트롤러 3). 실제 브로커·MariaDB·match-service 간 연동과 배포 환경 검증은 아직 하지 않았다.
+
+## 참가자 프로필 조회 API
+
+`GET /api/profiles/{profileId}`는 Bearer Access Token이 있는 사용자가 참가자 프로필을 조회하는 API다. 경로의 ID는 회원 ID가 아닌 `profile.id`이며, 응답은 `id`, `nickname`, `district`, `imageUrl`, `preferenceSports`로 구성된다. 이메일·비밀번호·회원 ID를 반환하지 않는다. 없는 프로필은 `404`, 미인증 또는 유효하지 않은 토큰은 `401`이다.
+
+기존 `GET /api/profiles/me`와 `PUT /api/profiles/me`는 계속 인증된 회원 ID로 본인 프로필을 조회·수정한다. 참가자 조회 경로에 수정 API는 추가하지 않는다.
+
+검증: Java 17에서 `bash ./gradlew clean test --no-daemon`. `ProfileDetailIntegrationTest`는 실제 JWT·보안 필터·컨트롤러·서비스와 모사한 저장소로 프로필/회원 ID 구분, 공개 응답 필드, 빈 선호 종목, 404·401, 기존 `/me` 조회·수정을 검증한다. 실제 DB·배포 화면 연동은 별도 검증 대상이다.
