@@ -32,7 +32,7 @@ export function validateMatch(values, { isEdit = false } = {}) {
     if (Number.isNaN(start.getTime())) errors.startAt = '올바른 시작 일시를 입력해주세요.';
     if (Number.isNaN(end.getTime()) || end <= start) errors.endAt = '종료 일시는 시작 일시보다 늦어야 합니다.';
   }
-  if (!Number.isInteger(Number(values.maxParticipant)) || Number(values.maxParticipant) < 1) errors.maxParticipant = '모집 인원은 1명 이상의 정수로 입력해주세요.';
+  if (!Number.isInteger(Number(values.maxParticipant)) || Number(values.maxParticipant) < 2) errors.maxParticipant = '모집 인원은 2명 이상의 정수로 입력해주세요.';
   // 아직 선택 입력이다: 비워두면 통과, 입력했으면 1원 이상의 정수여야 한다.
   if (values.targetPoints !== '' && values.targetPoints != null
       && (!Number.isInteger(Number(values.targetPoints)) || Number(values.targetPoints) < 1)) {

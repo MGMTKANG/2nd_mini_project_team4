@@ -105,6 +105,16 @@ public class MatchEntity {
     @Column(name = "target_points")
     private Long targetPoints;
 
+    // 환불을 시작한 펀딩은 참가 취소·일정 수정으로 다시 모집하지 않는다.
+    @Column(name = "funding_failed", nullable = false)
+    @ColumnDefault("false")
+    private boolean fundingFailed;
+
+    public void markFundingFailed() {
+        this.fundingFailed = true;
+        closeRecruitment();
+    }
+
     // Match의 Status를 CLOSED 로 변경하는 메서드
     public void closeRecruitment() {
         this.status = MatchStatus.CLOSED;
@@ -112,7 +122,7 @@ public class MatchEntity {
 
     // Match의 Status를 RECRUITING 로 변경하는 메서드
     public void reopenRecruitment() {
-        this.status = MatchStatus.RECRUITING;
+        this.status = fundingFailed ? MatchStatus.CLOSED : MatchStatus.RECRUITING;
     }
 
     public void update(

@@ -58,6 +58,50 @@ class FeignPointClientHttpTest {
     }
 
     @Test
+    void durableDebitAndCancelSendTheSameOperationId() throws Exception {
+        String id = "1bc170cd-b58b-47d9-a6e8-58e7b5585b8e";
+        POINT_SERVICE.stub("/internal/points/1/operations/deduct", 200, "{\"balance\":9000}");
+        POINT_SERVICE.stub("/internal/points/1/operations/cancel", 200, "{\"balance\":10000}");
+        assertThat(pointClient.deduct(1L, 1000L, id)).isEqualTo(9000L);
+        Request debit = POINT_SERVICE.requests().get(0);
+        assertThat(debit.path()).isEqualTo("/internal/points/1/operations/deduct");
+        assertThat(new com.fasterxml.jackson.databind.ObjectMapper().readTree(POINT_SERVICE.requestBodies().get(0)).path("operationId").asText()).isEqualTo(id);
+        assertThat(pointClient.cancel(1L, 1000L, id)).isEqualTo(10000L);
+        Request cancel = POINT_SERVICE.requests().get(1);
+        assertThat(cancel.path()).isEqualTo("/internal/points/1/operations/cancel");
+        assertThat(new com.fasterxml.jackson.databind.ObjectMapper().readTree(POINT_SERVICE.requestBodies().get(1)).path("operationId").asText()).isEqualTo(id);
+    }
+
+    @Test
+    void operationConflictIsNotMisreportedAsInsufficientPoints() {
+        POINT_SERVICE.stub("/internal/points/1/operations/deduct", 409,
+                "{\"code\":\"POINT_OPERATION_CANCELLED\"}");
+        assertThatThrownBy(() -> pointClient.deduct(1L, 1000L, "1bc170cd-b58b-47d9-a6e8-58e7b5585b8e"))
+                .isInstanceOf(ExternalServiceUnavailableException.class);
+    }
+
+    @Test
+    void oldPointServerCannotSilentlyApplyAnUntrackedDebit() {
+        // Old server has only the legacy route; the operation route is unavailable.
+        POINT_SERVICE.stub("/internal/points/1/deduct", 200, "{\"balance\":9000}");
+        assertThatThrownBy(() -> pointClient.deduct(1L, 1000L, "1bc170cd-b58b-47d9-a6e8-58e7b5585b8e"))
+                .isInstanceOf(ExternalServiceUnavailableException.class);
+        assertThat(POINT_SERVICE.requests()).extracting(Request::path)
+                .containsExactly("/internal/points/1/operations/deduct");
+    }
+
+    @Test
+    void legacyContributionRefundStillUsesTheIdempotentRoute() throws Exception {
+        String id = "1bc170cd-b58b-47d9-a6e8-58e7b5585b8e";
+        POINT_SERVICE.stub("/internal/points/1/operations/refund", 200, "{\"balance\":10000}");
+        assertThat(pointClient.refund(1L, 1000L, id)).isEqualTo(10000L);
+        assertThat(POINT_SERVICE.requests()).extracting(Request::path)
+                .containsExactly("/internal/points/1/operations/refund");
+        assertThat(new com.fasterxml.jackson.databind.ObjectMapper().readTree(POINT_SERVICE.requestBodies().get(0))
+                .path("operationId").asText()).isEqualTo(id);
+    }
+
+    @Test
     void deductReturnsUpdatedBalance() {
         POINT_SERVICE.stub("/internal/points/1/deduct", 200, """
                 {"balance":9000}

@@ -19,13 +19,10 @@ import com.example.sporty.features.commons.exception.exerciseMatching.MatchAlrea
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchAlreadyStartedException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchCapacityBelowParticipantsException;
 import com.example.sporty.features.commons.exception.exerciseMatching.FundedMatchCapacityImmutableException;
-import com.example.sporty.features.commons.exception.exerciseMatching.FundingNotFailedException;
-import com.example.sporty.features.commons.exception.exerciseMatching.MatchNotFundedException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchFullException;
 import com.example.sporty.features.commons.exception.exerciseMatching.MatchRecruitmentClosedException;
 import com.example.sporty.features.exerciseMatching.client.FacilityClient;
 import com.example.sporty.features.exerciseMatching.client.FacilityClient.FacilityServiceSummary;
-import com.example.sporty.features.exerciseMatching.client.PointClient;
 import com.example.sporty.features.exerciseMatching.client.UserClient;
 import com.example.sporty.features.exerciseMatching.client.UserClient.ProfileSummary;
 import com.example.sporty.features.exerciseMatching.client.UserClient.UserSummary;
@@ -67,7 +64,9 @@ public class MatchService {
     private final MatchParticipantRepository matchParticipantRepository;
     private final UserClient userClient;
     private final FacilityClient facilityClient;
-    private final PointClient pointClient;
+    private final PointDebitService pointDebitService;
+    private final FundingFailureService fundingFailureService;
+    private final FundingRefundService fundingRefundService;
     private final MatchUserGuard userGuard;
     private final ContributionRefundService contributionRefundService;
 
@@ -201,9 +200,10 @@ public class MatchService {
         // 크라우드펀딩 매치만 참가비를 차감한다 (SAGA 보상 트랜잭션의 시작점).
         // 참가자 행을 만들기 전에 차감해서, 포인트 부족 시 롤백할 참가 기록이 없게 한다.
         Long contributionPoints = null;
+        String pointOperationId = null;
         if (match.getTargetPoints() != null) {
             contributionPoints = (long) Math.ceil(match.getTargetPoints() / (double) match.getMaxParticipant());
-            pointClient.deduct(userId, contributionPoints);
+            pointOperationId = pointDebitService.deduct(userId, contributionPoints);
         }
 
         MatchParticipantEntity participant = matchParticipantRepository.save(
@@ -212,6 +212,7 @@ public class MatchService {
                         .userId(userId)
                         .role(MatchParticipantRole.PARTICIPANT)
                         .contributionPoints(contributionPoints)
+                        .pointOperationId(pointOperationId)
                         .build());
 
         if (participantCount + 1 == match.getMaxParticipant()) {
@@ -232,35 +233,19 @@ public class MatchService {
      * 참가비를 낸 참가자 전원에게 보상 트랜잭션(환불)을 수행한다.
      * 실제 마감 시각 판정 로직(배치/크론)은 데모 범위에서 생략한다.
      */
-    @Transactional
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     public void failFunding(Long matchId) {
-        MatchEntity match = matchRepository.findByIdForUpdate(matchId)
-                .orElseThrow(MatchNotFoundException::new);
-
-        // 크라우드펀딩 매치가 아니면 "펀딩 실패"라는 개념 자체가 성립하지 않는다.
-        if (match.getTargetPoints() == null) {
-            throw new MatchNotFundedException();
-        }
-
-        // 정원이 이미 찼다면(펀딩 성공) 환불 대상이 아니다. 이미 CLOSED여도 정원 미달 사유일 수 있으니 인원으로만 판단한다.
-        long participantCount = matchParticipantRepository.countByMatch_Id(matchId);
-        if (participantCount >= match.getMaxParticipant()) {
-            throw new FundingNotFailedException();
-        }
-
-        refundAllContributions(matchParticipantRepository.findAllByMatch_IdOrderByIdAsc(matchId));
-
-        match.closeRecruitment();
+        fundingFailureService.markFailed(matchId);
+        fundingRefundService.refundAll(matchId);
     }
 
     // 참가 취소·매치 삭제·회원 탈퇴로 참가 기록이 사라지기 전에, 차감된 참가비가 있으면 환불한다.
-    // 호출자의 트랜잭션과 분리된(REQUIRES_NEW) 트랜잭션에서 커밋한다 - ContributionRefundService 참고.
+    // 참가 기록 변경과 환불 요청을 함께 커밋하고, 원격 환불은 커밋 후 재시도 가능하게 처리한다.
     private void refundContribution(MatchParticipantEntity participant) {
         contributionRefundService.refundContribution(participant);
     }
 
-    // 여러 명을 순서대로 환불하다가 한 명이 실패해도, 각자 독립된 트랜잭션이라 이미
-    // point-service에 커밋된 앞선 환불은 이 메서드가 속한 트랜잭션 롤백에 영향받지 않는다.
+    // 모든 환불 요청과 참가 기록 변경이 같은 로컬 트랜잭션에 속한다.
     private void refundAllContributions(List<MatchParticipantEntity> participants) {
         for (MatchParticipantEntity participant : participants) {
             refundContribution(participant);
@@ -303,9 +288,10 @@ public class MatchService {
         // 크라우드펀딩 매치는 생성자도 1인당 참가비를 낸다. 그렇지 않으면 정원이 다 차도
         // 생성자 몫만큼 목표 금액에 못 미친다 (joinMatch와 같은 공식, 같은 차감 시점).
         Long contributionPoints = null;
+        String pointOperationId = null;
         if (req.getTargetPoints() != null) {
             contributionPoints = (long) Math.ceil(req.getTargetPoints() / (double) req.getMaxParticipant());
-            pointClient.deduct(userId, contributionPoints);
+            pointOperationId = pointDebitService.deduct(userId, contributionPoints);
         }
 
         // 3. create MatchEntity and save
@@ -321,6 +307,7 @@ public class MatchService {
             .match(savedMatchEntity)
             .role(MatchParticipantRole.OWNER)
             .contributionPoints(contributionPoints)
+            .pointOperationId(pointOperationId)
             .build();
 
         matchParticipantRepository.save(matchParticipantEntity);
@@ -542,6 +529,8 @@ public class MatchService {
                 .genderGroup(match.getGenderGroup())
                 .serviceId(facility == null ? null : facility.id())
                 .targetPoints(match.getTargetPoints())
+                .fundingFailed(match.isFundingFailed())
+                .fundedPoints(participants.stream().mapToLong(p -> p.getContributionPoints() == null ? 0L : p.getContributionPoints()).sum())
                 .participants(participantSummaries)
                 .isOwner(isOwner)
                 .isParticipant(isParticipant)

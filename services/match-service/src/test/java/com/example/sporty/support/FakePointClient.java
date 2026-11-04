@@ -15,6 +15,13 @@ public class FakePointClient implements PointClient {
     private final Map<Long, Integer> refundCallCounts = new ConcurrentHashMap<>();
     private final java.util.Set<Long> refundFailuresFor = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
+    private final Map<String, Boolean> debitStates = new ConcurrentHashMap<>();
+    private final Map<String, Long> refunded = new ConcurrentHashMap<>();
+    private final java.util.Set<Long> debitResponseLoss = ConcurrentHashMap.newKeySet();
+    private final java.util.Set<Long> refundResponseLoss = ConcurrentHashMap.newKeySet();
+    public void loseNextDebitResponseFor(Long userId) { debitResponseLoss.add(userId); }
+    public void loseNextRefundResponseFor(Long userId) { refundResponseLoss.add(userId); }
+
     public void setBalance(Long userId, Long balance) {
         balances.put(userId, balance);
     }
@@ -53,5 +60,36 @@ public class FakePointClient implements PointClient {
         long updated = balances.getOrDefault(userId, DEFAULT_BALANCE) + amount;
         balances.put(userId, updated);
         return updated;
+    }
+    @Override
+    public synchronized Long deduct(Long userId, Long amount, String operationId) {
+        if (debitStates.containsKey(operationId)) {
+            if (!debitStates.get(operationId)) throw new ExternalServiceUnavailableException("point-service");
+            return getBalance(userId);
+        }
+        Long balance = deduct(userId, amount);
+        debitStates.put(operationId, true);
+        if (debitResponseLoss.remove(userId)) throw new ExternalServiceUnavailableException("point-service");
+        return balance;
+    }
+
+    @Override
+    public synchronized Long refund(Long userId, Long amount, String operationId) {
+        if (refunded.containsKey(operationId)) return refunded.get(operationId);
+        Long balance = refund(userId, amount);
+        refunded.put(operationId, balance);
+        if (refundResponseLoss.remove(userId)) throw new ExternalServiceUnavailableException("point-service");
+        return balance;
+    }
+
+    @Override
+    public synchronized Long cancel(Long userId, Long amount, String operationId) {
+        if (refundFailuresFor.remove(userId)) throw new ExternalServiceUnavailableException("point-service");
+        if (Boolean.TRUE.equals(debitStates.get(operationId))) {
+            refund(userId, amount);
+        }
+        debitStates.put(operationId, false);
+        if (refundResponseLoss.remove(userId)) throw new ExternalServiceUnavailableException("point-service");
+        return getBalance(userId);
     }
 }

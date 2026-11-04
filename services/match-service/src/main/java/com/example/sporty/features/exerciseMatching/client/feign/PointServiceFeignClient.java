@@ -15,7 +15,17 @@ public interface PointServiceFeignClient {
     @PostMapping("/internal/points/{userId}/refund")
     PointBalanceResponse refund(@PathVariable("userId") Long userId, @RequestBody PointAmountRequest request);
 
-    record PointAmountRequest(Long amount) {
+    @PostMapping("/internal/points/{userId}/operations/deduct")
+    PointBalanceResponse deductOperation(@PathVariable("userId") Long userId, @RequestBody PointAmountRequest request);
+
+    @PostMapping("/internal/points/{userId}/operations/refund")
+    PointBalanceResponse refundOperation(@PathVariable("userId") Long userId, @RequestBody PointAmountRequest request);
+
+    @PostMapping("/internal/points/{userId}/operations/cancel")
+    PointBalanceResponse cancel(@PathVariable("userId") Long userId, @RequestBody PointAmountRequest request);
+
+    record PointAmountRequest(Long amount, String operationId) {
+        PointAmountRequest(Long amount) { this(amount, null); }
     }
 
     record PointBalanceResponse(Long balance) {

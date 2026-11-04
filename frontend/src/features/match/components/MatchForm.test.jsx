@@ -160,3 +160,37 @@ test.each([201, 401])('handles creation result %s with the correct redirect', as
   expect(await screen.findByTestId('location')).toHaveTextContent(status === 201 ? '/matches/42' : '/login?redirect=%2Fmatches%2Fnew');
   if (status === 401) expect(localStorage.getItem('at')).toBeNull();
 });
+
+
+test.each([false, true])('rejects one participant for create/edit isEdit=%s and accepts two', isEdit => {
+  expect(validateMatch(initialMatchValues({ ...match, maxParticipant: 1 }), { isEdit }).maxParticipant)
+    .toBe('모집 인원은 2명 이상의 정수로 입력해주세요.');
+  expect(validateMatch(initialMatchValues({ ...match, maxParticipant: 2 }), { isEdit })).toEqual({});
+});
+
+test('minimum capacity stepper cannot reduce two to one and manual one is rejected', async () => {
+  const submit = jest.fn();
+  render(<MatchForm initialValues={{ ...match, maxParticipant: 2 }} selectedFacility={facility} onSubmit={submit} />);
+  expect(screen.getByRole('button', { name: '모집 인원 줄이기' })).toBeDisabled();
+  const capacity = screen.getByLabelText('모집 최대 인원 (방장 포함)');
+  expect(capacity).toHaveAttribute('min', '2');
+  fireEvent.change(capacity, { target: { value: '1' } });
+  fireEvent.click(screen.getByRole('button', { name: '매치 개설 완료하기' }));
+  expect(await screen.findByText('모집 인원은 2명 이상의 정수로 입력해주세요.')).toBeInTheDocument();
+  expect(submit).not.toHaveBeenCalled();
+});
+
+test.each([6000, null])('locks reservation cost when editing (existing amount %s)', targetPoints => {
+  render(<MatchForm isEdit initialValues={{ ...match, targetPoints }} selectedFacility={facility} onSubmit={jest.fn()} />);
+  expect(screen.getByLabelText('시설 예약 비용 (총액, 선택)')).toBeDisabled();
+  expect(screen.getByText('시설 예약 비용은 개설 후 변경할 수 없습니다.')).toBeInTheDocument();
+});
+
+test('explains insufficient balance without losing the creation input', async () => {
+  const submit = jest.fn().mockRejectedValue({ response: { status: 409, data: { code: 'INSUFFICIENT_POINTS' } } });
+  render(<MatchForm initialValues={{ ...match, targetPoints: 6000 }} selectedFacility={facility} onSubmit={submit} />);
+  fireEvent.click(screen.getByRole('button', { name: '매치 개설 완료하기' }));
+  expect(await screen.findByText('포인트가 부족합니다. 마이페이지에서 잔액을 확인해주세요.')).toBeInTheDocument();
+  expect(screen.getByLabelText('시설 예약 비용 (총액, 선택)')).toHaveValue(6000);
+  expect(screen.getByLabelText('매치 제목')).toHaveValue(match.title);
+});

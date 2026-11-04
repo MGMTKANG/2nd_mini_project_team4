@@ -200,7 +200,7 @@ function MatchDetailContent({ match, preview, onRefresh }) {
 
   async function performAction(action) {
     if (preview || busy.current) return;
-    if (action === 'delete' ? match.isOwner !== true : match.isOwner === true || match.isParticipant === true || match.status !== 'RECRUITING' || remaining === 0) return;
+    if (action === 'delete' ? match.isOwner !== true : match.isOwner === true || match.isParticipant === true || match.fundingFailed === true || match.status !== 'RECRUITING' || remaining === 0) return;
     if (!localStorage.getItem('at')) {
       login(action === 'delete' ? '매치를 삭제하려면 로그인이 필요합니다.' : undefined);
       return;
@@ -234,6 +234,7 @@ function MatchDetailContent({ match, preview, onRefresh }) {
       }
       if (action === 'join' && (statusCode === 400 || statusCode === 409)) {
         const reasons = {
+          INSUFFICIENT_POINTS: '포인트가 부족합니다. 마이페이지에서 잔액을 확인해주세요.',
           MATCH_RECRUITMENT_CLOSED: '모집이 마감된 매치입니다.',
           MATCH_FULL: '모집 정원이 찼습니다.',
           MATCH_ALREADY_STARTED: '이미 시작된 매치에는 참가할 수 없습니다.',
@@ -257,12 +258,16 @@ function MatchDetailContent({ match, preview, onRefresh }) {
   const progress = current !== null && maximum !== null ? Math.min(100, Math.max(0, current / maximum * 100)) : 0;
   const hasFunding = maximum !== null && Number.isFinite(match.targetPoints) && match.targetPoints > 0;
   const entryPoints = hasFunding ? Math.ceil(match.targetPoints / maximum) : null;
-  const fundedPoints = hasFunding && current !== null ? entryPoints * current : null;
-  const status = { RECRUITING: '모집 중', CLOSED: '모집 마감' }[match.status] || '상태 정보 없음';
+  const fundedPoints = hasFunding
+    ? (Number.isFinite(match.fundedPoints) ? match.fundedPoints : (current !== null ? entryPoints * current : null))
+    : null;
+  const fundingFailed = match.fundingFailed === true;
+  const status = fundingFailed ? '펀딩 종료' : ({ RECRUITING: '모집 중', CLOSED: '모집 마감' }[match.status] || '상태 정보 없음');
   const schedule = `${dateLabel(match.startAt)} ${timeLabel(match.startAt)} — ${match.startAt?.slice(0, 10) !== match.endAt?.slice(0, 10) ? `${dateLabel(match.endAt)} ` : ''}${timeLabel(match.endAt)}`;
   let actionLabel = '참가 신청하기';
   if (match.isOwner === true) actionLabel = pending === 'delete' ? '삭제 중…' : '매치 삭제하기';
   else if (match.isParticipant === true) actionLabel = pending === 'leave' ? '탈퇴 중…' : '매치 탈퇴하기';
+  else if (fundingFailed) actionLabel = '펀딩이 종료되었습니다';
   else if (match.status === 'CLOSED') actionLabel = '모집이 마감되었습니다';
   else if (remaining === 0) actionLabel = '모집 정원이 찼습니다';
 
@@ -310,7 +315,7 @@ function MatchDetailContent({ match, preview, onRefresh }) {
               {owners.length > 0 && <ul className="detail-owner-list">{owners.map((person, index) => <Participant key={person.profileId ?? `owner-${index}`} participant={person} preview={preview} onProfileClick={setSelectedProfileId} />)}</ul>}
               <ul className="detail-member-list">{members.map((person, index) => <Participant key={person.profileId ?? `member-${index}`} participant={person} preview={preview} onProfileClick={setSelectedProfileId} />)}</ul>
             </>}
-            {match.status === 'RECRUITING' && remaining > 0 && <p className="detail-open-slot"><span aria-hidden="true">＋</span> 함께할 {remaining}명을 기다리고 있어요</p>}
+            {!fundingFailed && match.status === 'RECRUITING' && remaining > 0 && <p className="detail-open-slot"><span aria-hidden="true">＋</span> 함께할 {remaining}명을 기다리고 있어요</p>}
           </section>
         </div>
         <aside className="detail-sidebar" aria-label="모집 현황">
@@ -320,8 +325,8 @@ function MatchDetailContent({ match, preview, onRefresh }) {
             {current !== null && maximum !== null && <progress style={{ '--capacity-color': progress < 25 ? '#2563eb' : progress <= 75 ? '#16a34a' : '#dc2626' }} value={progress} max="100" aria-label="모집 인원 비율" />}
             {hasFunding && <progress style={{ '--capacity-color': '#f59e0b' }} max="100" value={Math.min(100, Math.round((fundedPoints / match.targetPoints) * 100))} aria-label="펀딩 진행률" />}
             {hasFunding && <p className="detail-funding">₩{fundedPoints.toLocaleString()} / ₩{match.targetPoints.toLocaleString()} 모금 · 1인당 ₩{entryPoints.toLocaleString()}</p>}
-            <p className="detail-recruitment-note">{match.status === 'CLOSED' ? '모집이 마감된 매치입니다.' : remaining === null ? '모집 인원을 확인할 수 없습니다.' : remaining === 0 ? '모집 정원이 찼습니다.' : `${remaining}명이 더 함께할 수 있어요.`}</p>
-            <button type="button" className={`detail-primary-button ${match.isOwner || match.isParticipant ? 'is-danger' : 'is-join'}`} disabled={preview || pending !== null || (match.isOwner !== true && match.isParticipant !== true && (match.status !== 'RECRUITING' || remaining === 0))} onClick={match.isOwner === true ? () => performAction('delete') : match.isParticipant === true ? handleLeave : () => (hasFunding ? setConfirmingJoin(true) : performAction('join'))}>{pending === 'join' ? '참가 신청 중…' : actionLabel}</button>
+            <p className="detail-recruitment-note">{fundingFailed ? '펀딩이 종료되어 새로 참가할 수 없습니다.' : match.status === 'CLOSED' ? '모집이 마감된 매치입니다.' : remaining === null ? '모집 인원을 확인할 수 없습니다.' : remaining === 0 ? '모집 정원이 찼습니다.' : `${remaining}명이 더 함께할 수 있어요.`}</p>
+            <button type="button" className={`detail-primary-button ${match.isOwner || match.isParticipant ? 'is-danger' : 'is-join'}`} disabled={preview || pending !== null || (match.isOwner !== true && match.isParticipant !== true && (fundingFailed || match.status !== 'RECRUITING' || remaining === 0))} onClick={match.isOwner === true ? () => performAction('delete') : match.isParticipant === true ? handleLeave : () => (hasFunding ? setConfirmingJoin(true) : performAction('join'))}>{pending === 'join' ? '참가 신청 중…' : actionLabel}</button>
             {confirmingJoin && <MatchJoinConfirmModal title={match.title} targetPoints={match.targetPoints} entryPoints={entryPoints} pending={pending === 'join'} onCancel={() => setConfirmingJoin(false)} onConfirm={() => { setConfirmingJoin(false); performAction('join'); }} />}
             {match.isOwner === true && !preview && pending === null && <Link className="match-edit-link" to={`/matches/${match.matchId}/edit`}>매치 수정하기</Link>}
             {actionError && <div role="alert"><p className="match-error">{actionError}</p><button type="button" disabled={pending !== null} onClick={onRefresh}>새로고침</button></div>}

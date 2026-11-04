@@ -16,29 +16,57 @@ import lombok.RequiredArgsConstructor;
 public class FeignPointClient implements PointClient {
 
     private final PointServiceFeignClient pointServiceFeignClient;
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
     @Override
-    public Long deduct(Long userId, Long amount) {
+    public Long deduct(Long userId, Long amount) { return deduct(userId, amount, null); }
+
+    @Override
+    public Long deduct(Long userId, Long amount, String operationId) {
         try {
-            PointBalanceResponse response = pointServiceFeignClient.deduct(userId, new PointAmountRequest(amount));
+            PointBalanceResponse response = operationId == null
+                    ? pointServiceFeignClient.deduct(userId, new PointAmountRequest(amount))
+                    : pointServiceFeignClient.deductOperation(userId, new PointAmountRequest(amount, operationId));
             if (response == null || response.balance() == null) {
                 throw new ExternalServiceUnavailableException("point-service");
             }
             return response.balance();
         } catch (FeignException.Conflict e) {
-            throw new InsufficientPointsException();
+            try {
+                if ("INSUFFICIENT_POINTS".equals(objectMapper.readTree(e.contentUTF8()).path("code").asText())) {
+                    throw new InsufficientPointsException();
+                }
+            } catch (com.fasterxml.jackson.core.JsonProcessingException ignored) {
+                // Unknown conflict is not a balance error.
+            }
+            throw new ExternalServiceUnavailableException("point-service", e);
         } catch (FeignException e) {
             throw new ExternalServiceUnavailableException("point-service", e);
         }
     }
 
     @Override
-    public Long refund(Long userId, Long amount) {
+    public Long refund(Long userId, Long amount) { return refund(userId, amount, null); }
+
+    @Override
+    public Long refund(Long userId, Long amount, String operationId) {
         try {
-            PointBalanceResponse response = pointServiceFeignClient.refund(userId, new PointAmountRequest(amount));
+            PointBalanceResponse response = operationId == null
+                    ? pointServiceFeignClient.refund(userId, new PointAmountRequest(amount))
+                    : pointServiceFeignClient.refundOperation(userId, new PointAmountRequest(amount, operationId));
             if (response == null || response.balance() == null) {
                 throw new ExternalServiceUnavailableException("point-service");
             }
+            return response.balance();
+        } catch (FeignException e) {
+            throw new ExternalServiceUnavailableException("point-service", e);
+        }
+    }
+    @Override
+    public Long cancel(Long userId, Long amount, String operationId) {
+        try {
+            PointBalanceResponse response = pointServiceFeignClient.cancel(userId, new PointAmountRequest(amount, operationId));
+            if (response == null || response.balance() == null) throw new ExternalServiceUnavailableException("point-service");
             return response.balance();
         } catch (FeignException e) {
             throw new ExternalServiceUnavailableException("point-service", e);

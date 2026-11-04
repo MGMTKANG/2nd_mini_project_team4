@@ -102,6 +102,11 @@ class MatchJoinIntegrationTest {
     @Autowired
     private FakePointClient fakePointClient;
 
+    @Autowired
+    private com.example.sporty.features.exerciseMatching.repository.PointRefundRepository pointRefundRepository;
+    @Autowired
+    private PointRefundProcessor pointRefundProcessor;
+
     private Map<Long, Long> users;
     private Long serviceId;
 
@@ -432,7 +437,7 @@ class MatchJoinIntegrationTest {
     }
 
     @Test
-    @DisplayName("[회귀] 여러 참가자를 환불하다 한 명이 실패해도 이미 환불된 참가자는 롤백되지 않는다")
+    @DisplayName("[회귀] 일부 원격 환불 실패는 종료와 환불 접수를 되돌리지 않고 내구성 있는 요청으로 재시도한다")
     void refundFailureForOneParticipantDoesNotRollBackAlreadyRefundedOthers() {
         Long matchId = createFundedMatch(4, 10000L);
         fakePointClient.setBalance(userId(2L), 5000L);
@@ -441,8 +446,7 @@ class MatchJoinIntegrationTest {
         matchService.joinMatch(matchId, userId(3L));
         fakePointClient.failNextRefundFor(userId(3L));
 
-        assertThatThrownBy(() -> matchService.failFunding(matchId))
-                .isInstanceOf(ExternalServiceUnavailableException.class);
+        matchService.failFunding(matchId);
 
         // 생성자(1)와 참가자(2)는 참가자(3) 이전에 각자 독립된 트랜잭션으로 이미 환불·커밋됐다.
         assertThat(fakePointClient.getBalance(userId(1L))).isEqualTo(FakePointClient.DEFAULT_BALANCE);
@@ -452,15 +456,18 @@ class MatchJoinIntegrationTest {
         assertThat(matchParticipantRepository.findByMatch_IdAndUserId(matchId, userId(2L))
                 .orElseThrow().getContributionPoints()).isNull();
 
-        // 참가자(3)는 환불이 실패했으니 차감된 상태 그대로 남는다.
+        // 참가자(3)의 원격 환불은 아직 실패 상태지만, 로컬 환불 요청은 커밋되어 있다.
         assertThat(fakePointClient.getBalance(userId(3L))).isEqualTo(2500L);
         assertThat(matchParticipantRepository.findByMatch_IdAndUserId(matchId, userId(3L))
-                .orElseThrow().getContributionPoints()).isEqualTo(2500L);
+                .orElseThrow().getContributionPoints()).isNull();
+        assertThat(pointRefundRepository.findAll().stream().filter(r -> r.isPending()).toList()).hasSize(1);
 
-        // failFunding() 자체의 트랜잭션은 롤백됐으므로 매치는 아직 마감되지 않았다.
-        assertThat(matchRepository.findById(matchId).orElseThrow().getStatus()).isEqualTo(MatchStatus.RECRUITING);
+        // 환불 전에 종료를 커밋하여 부분 실패에도 재모집을 막는다.
+        assertThat(matchRepository.findById(matchId).orElseThrow().getStatus()).isEqualTo(MatchStatus.CLOSED);
+        assertThat(matchRepository.findById(matchId).orElseThrow().isFundingFailed()).isTrue();
 
-        // 재시도하면 이미 환불된 1·2는 건너뛰고(중복 환불 없음) 3만 환불된다.
+        // 내구성 있는 요청을 재시도하면 미처리 3만 환불된다. 이미 처리한 요청의 재호출도 무해하다.
+        pointRefundRepository.findAll().forEach(r -> pointRefundProcessor.process(r.getOperationId()));
         matchService.failFunding(matchId);
         assertThat(fakePointClient.getBalance(userId(3L))).isEqualTo(5000L);
         assertThat(fakePointClient.getRefundCallCount(userId(1L))).isEqualTo(1);

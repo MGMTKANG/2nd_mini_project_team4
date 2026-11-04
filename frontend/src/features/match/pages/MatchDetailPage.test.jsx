@@ -524,3 +524,25 @@ test('shows a disabled leave button in the participant preview without calling A
     process.env.NODE_ENV = previous;
   }
 });
+
+
+test('distinguishes insufficient points from already joined', async () => {
+  localStorage.setItem('at', 'token');
+  getMatchDetail.mockResolvedValue(match);
+  joinMatch.mockRejectedValue({ response: { status: 409, data: { code: 'INSUFFICIENT_POINTS' } } });
+  showPage();
+  fireEvent.click(await screen.findByRole('button', { name: '참가 신청하기' }));
+  await waitFor(() => expect(window.alert).toHaveBeenCalledWith('포인트가 부족합니다. 마이페이지에서 잔액을 확인해주세요.'));
+  expect(window.alert).not.toHaveBeenCalledWith('이미 참가 중인 매치입니다.');
+});
+
+test.each([0, 2500])('shows actual remaining contributions after funding failure (%s points) and blocks joining', async fundedPoints => {
+  // Ignore an inconsistent recruiting label too: a persisted failure is terminal.
+  getMatchDetail.mockResolvedValue({ ...match, status: 'RECRUITING', targetPoints: 10000, fundedPoints, fundingFailed: true });
+  showPage();
+  expect(await screen.findByRole('button', { name: '펀딩이 종료되었습니다' })).toBeDisabled();
+  expect(screen.getByText('펀딩 종료')).toBeInTheDocument();
+  expect(screen.getByText(new RegExp(`₩${fundedPoints.toLocaleString()} / ₩10,000 모금`))).toBeInTheDocument();
+  expect(screen.getByRole('progressbar', { name: '펀딩 진행률' })).toHaveAttribute('value', String(fundedPoints / 100));
+  expect(joinMatch).not.toHaveBeenCalled();
+});

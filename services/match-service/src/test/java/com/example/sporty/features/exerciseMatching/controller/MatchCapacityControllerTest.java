@@ -44,9 +44,14 @@ import com.example.sporty.features.exerciseMatching.service.MatchUserGuard;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 @WebMvcTest(MatchController.class)
-@Import({MatchService.class, ContributionRefundService.class, SecurityConfig.class, JwtAuthenticationFilter.class})
+@Import({MatchService.class, SecurityConfig.class, JwtAuthenticationFilter.class})
 @TestPropertySource(properties = "jwt.secret=test-only-signing-secret-with-at-least-32-bytes")
 class MatchCapacityControllerTest {
+    @MockitoBean private com.example.sporty.features.exerciseMatching.service.PointDebitService pointDebitService;
+    @MockitoBean private com.example.sporty.features.exerciseMatching.service.FundingFailureService fundingFailureService;
+    @MockitoBean private com.example.sporty.features.exerciseMatching.service.FundingRefundService fundingRefundService;
+    @MockitoBean private com.example.sporty.features.exerciseMatching.service.ContributionRefundService contributionRefundService;
+
     @MockitoBean private MatchUserGuard userGuard;
 
     private final JwtProvider jwtProvider = new JwtProvider(

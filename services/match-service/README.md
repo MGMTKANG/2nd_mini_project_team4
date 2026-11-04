@@ -1,3 +1,5 @@
+> 2026-11-05 포인트 차감·환불 복구 및 펀딩 종료 상태의 현재 계약과 배포 선행 SQL은 [point-recovery.md](docs/point-recovery.md)를 따른다. 아래의 초기 분리/미구현 기록과 구분한다.
+
 # match-service
 
 운동 매칭 서비스. 모놀리식 `backend/sporty`의 `exerciseMatching` 코드를 떼어 낸 독립 Spring Boot 앱이다.

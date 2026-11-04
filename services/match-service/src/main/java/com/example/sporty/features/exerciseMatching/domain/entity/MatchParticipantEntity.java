@@ -67,6 +67,10 @@ public class MatchParticipantEntity {
     @Column(name = "contribution_points")
     private Long contributionPoints;
 
+    // New contributions reference a durable debit; null means a pre-migration contribution.
+    @Column(name = "point_operation_id", length = 36)
+    private String pointOperationId;
+
     // 환불 완료 후 중복 환불을 막기 위해 호출한다.
     public void clearContribution() {
         this.contributionPoints = null;
