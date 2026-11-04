@@ -17,7 +17,7 @@ spec:
       terminationGracePeriodSeconds: 40
       containers:
         - name: user-service
-          image: 088153173875.dkr.ecr.ap-northeast-2.amazonaws.com/team4/user-service:sha-f6c7299abde30c9219ba0164d0226d521cc631cf-41791579767-1
+          image: 088153173875.dkr.ecr.ap-northeast-2.amazonaws.com/team4/user-service:sha-8c7e61b4a182214d8109dfc9b49d560354be380e-41795718799-1
           ports:
             - name: http
               containerPort: 8081
