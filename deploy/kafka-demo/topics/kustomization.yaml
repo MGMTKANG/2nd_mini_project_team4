@@ -1,0 +1,6 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: sporty
+# Run separately only after the broker is Ready. This Job is not an Argo sync hook.
+resources:
+  - job.yaml

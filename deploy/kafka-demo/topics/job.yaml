@@ -1,0 +1,62 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kafka-user-withdrawn-init
+  namespace: sporty
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 300
+  # Keep the completed Job for review; do not delete/recreate it automatically.
+  template:
+    metadata:
+      labels:
+        app: kafka-topic-init
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: topic-init
+          image: apache/kafka:4.1.2@sha256:5cc2a2fd93fa2687b44015eee04fb2c3edd9e526bd64bf8bec5ff1e268772e0e
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: KAFKA_HEAP_OPTS
+              value: -Xms64m -Xmx128m
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          command: [/bin/sh, -ec]
+          args:
+            - |
+              broker=kafka.sporty.svc.cluster.local:9092
+              /opt/kafka/bin/kafka-topics.sh --bootstrap-server "$broker" \
+                --create --if-not-exists --topic user.withdrawn \
+                --partitions 1 --replication-factor 1 \
+                --config cleanup.policy=delete \
+                --config retention.ms=604800000 \
+                --config retention.bytes=1073741824
+              description=$(/opt/kafka/bin/kafka-topics.sh --bootstrap-server "$broker" \
+                --describe --topic user.withdrawn)
+              printf '%s\n' "$description"
+              printf '%s\n' "$description" | grep -Eq 'PartitionCount:[[:space:]]*1([[:space:]]|$)'
+              printf '%s\n' "$description" | grep -Eq 'ReplicationFactor:[[:space:]]*1([[:space:]]|$)'
+              configs=$(/opt/kafka/bin/kafka-configs.sh --bootstrap-server "$broker" \
+                --describe --entity-type topics --entity-name user.withdrawn)
+              printf '%s\n' "$configs"
+              printf '%s\n' "$configs" | grep -Eq 'cleanup.policy=delete([[:space:],]|$)'
+              printf '%s\n' "$configs" | grep -Eq 'retention.ms=604800000([[:space:],]|$)'
+              printf '%s\n' "$configs" | grep -Eq 'retention.bytes=1073741824([[:space:],]|$)'
+              printf '%s\n' 'user.withdrawn topic settings verified.'
