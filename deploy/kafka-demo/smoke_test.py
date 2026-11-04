@@ -57,6 +57,8 @@ def main():
         raise RuntimeError('Broker did not become ready within 120 seconds')
 
     try:
+        # Image download can take much longer than a local container command on a cold cache.
+        command('docker', 'pull', image, timeout=600)
         command('docker', 'network', 'create', '--internal', network)
         created_network = True
         command('docker', 'volume', 'create', volume)

@@ -171,6 +171,23 @@ class KafkaDemoManifestTest(unittest.TestCase):
         self.assertTrue(self.ingress_allowed(self.pod["metadata"]["labels"], 9093))
         self.assertFalse(self.ingress_allowed({"app": "unrelated-workload"}, 9092))
 
+    def test_topic_config_checks_reject_mixed_policy_and_matching_synonyms(self):
+        script = self.jobs[0]['spec']['template']['spec']['containers'][0]['args'][0]
+        checks = [line.strip() for line in script.splitlines() if '"$configs" | grep' in line]
+        self.assertEqual(len(checks), 3)
+        settings = [('cleanup.policy', 'delete', 'delete,compact'),
+                    ('retention.ms', '604800000', '1'),
+                    ('retention.bytes', '1073741824', '1')]
+        for check, (key, expected, wrong) in zip(checks, settings):
+            for current, accepted in [(expected, True), (wrong, False)]:
+                # The desired value in a synonym must not hide an incorrect effective value.
+                output = (f'  {key}={current} sensitive=false synonyms={{DYNAMIC_TOPIC_CONFIG:'
+                          f'{key}={current},DEFAULT_CONFIG:{key}={expected}}}\n')
+                with self.subTest(key=key, current=current):
+                    result = subprocess.run(['/bin/sh', '-c', 'configs=$(cat)\n' + check],
+                                            input=output, text=True, capture_output=True)
+                    self.assertEqual(result.returncode, 0 if accepted else 1)
+
     def test_topic_job_creates_withdrawal_topic_idempotently(self):
         self.assertEqual(len(self.jobs), 1)
         job = self.jobs[0]
