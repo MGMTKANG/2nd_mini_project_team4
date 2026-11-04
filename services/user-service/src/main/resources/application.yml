@@ -38,9 +38,13 @@ spring:
 
     kafka:
         bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+        admin:
+            auto-create: ${user.events.kafka-enabled:false}
         producer:
             key-serializer: org.apache.kafka.common.serialization.StringSerializer
             value-serializer: org.apache.kafka.common.serialization.StringSerializer
+            properties:
+                "[max.block.ms]": ${USER_KAFKA_MAX_BLOCK_MS:3000}
 
     cloud:
         config:
@@ -67,6 +71,7 @@ jwt:
 
 user:
     events:
+        kafka-enabled: ${USER_KAFKA_ENABLED:false}
         user-withdrawn-topic: ${USER_WITHDRAWN_TOPIC:user.withdrawn}
 
 ---

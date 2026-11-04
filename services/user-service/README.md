@@ -49,3 +49,23 @@ cd services/user-service
 1. `user`: 회원 계정 및 탈퇴 상태 (`ACTIVE`, `WITHDRAWN`), 이메일, 비밀번호 해시, 성별
 2. `profile`: 닉네임, 활동 자치구(`District`), 프로필 이미지
 3. `sport_preference`: 회원별 운동 선호 종목 목록
+
+---
+
+## 5. 회원 탈퇴 Kafka 이벤트 (COM-07)
+
+`withdraw()`는 내부 이벤트를 등록하고, DB 커밋 후 `AFTER_COMMIT` 리스너가 `UserWithdrawn`을 발행한다. 롤백되거나 트랜잭션이 없으면 발행하지 않는다. 기본값 `user.events.kafka-enabled=${USER_KAFKA_ENABLED:false}`에서는 발행과 Kafka Admin의 토픽 자동 생성을 끄며, Kafka에 연결하지 않고 DEBUG 로그 한 줄만 남긴다.
+
+Kafka와 토픽을 준비한 뒤 `USER_KAFKA_ENABLED=true`, `KAFKA_BOOTSTRAP_SERVERS=<브로커>:9092`로 활성화한다. 토픽 설정 `user.events.user-withdrawn-topic`은 `USER_WITHDRAWN_TOPIC`으로 변경하며 기본값은 `user.withdrawn`이다. 구독하는 match-service에도 같은 토픽과 `MATCH_KAFKA_ENABLED=true`가 필요하다. 메시지 키는 `aggregateId`(회원 ID 문자열), 값은 다음 JSON 문자열이다.
+
+```json
+{"eventId":"f3cc9eb9-634a-4dd8-a3a6-53e4a7d58e62","eventType":"UserWithdrawn","aggregateType":"User","aggregateId":"1","occurredAt":"2026-11-04T12:34:56.789Z","payload":{"userId":1}}
+```
+
+전송 결과는 비동기 콜백으로 기록하며 실패를 탈퇴 응답에 전파하지 않는다. `KafkaTemplate.send()`의 메타데이터·버퍼 대기는 `USER_KAFKA_MAX_BLOCK_MS`(기본 3000ms)로 제한한다. 성공 로그에는 topic/partition/offset/eventId, 실패 로그에는 eventId/예외 클래스명만 남긴다. Kafka 기본 실패 리스너도 대체하여 원문과 예외 상세가 별도로 기록되지 않게 한다.
+
+**한계:** Outbox(DAT-03)는 이번 범위에 포함하지 않는다. DB 커밋 후 프로세스가 종료되거나 발행이 실패하면 이벤트가 유실될 수 있으며, 영속 재시도나 재발행 기능은 없다.
+
+검증 명령: `cd services/user-service && bash ./gradlew clean test`. 테스트 구성은 JSON 계약·실패 격리 단위 테스트, H2 커밋/롤백·비활성 통합 테스트, 실제 토픽의 키·값을 확인하는 EmbeddedKafka 통합 테스트다.
+
+2026-11-04 검증(로컬 macOS, JDK 17): `bash ./gradlew clean test` **17개 통과·실패 0·건너뜀 0** (단위 6, H2 트랜잭션 5, 비활성/로그 2, EmbeddedKafka 1, 기존 컨트롤러 3). 실제 브로커·MariaDB·match-service 간 연동과 배포 환경 검증은 아직 하지 않았다.
