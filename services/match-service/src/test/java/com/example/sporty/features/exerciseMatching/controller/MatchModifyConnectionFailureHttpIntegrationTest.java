@@ -91,7 +91,7 @@ class MatchModifyConnectionFailureHttpIntegrationTest {
     }
 
     @Test
-    void modifyFacilityConnectionRefusedCommitsAndClearsDecorations() throws Exception {
+    void modifyFacilityConnectionRefusedCommitsAndKeepsProfiles() throws Exception {
         USER_SERVICE.stub("/internal/users/profiles", 200, """
                 [{"userId":1,"profileId":10,"nickname":"방장","imageUrl":"/owner.png"},
                  {"userId":2,"profileId":20,"nickname":"참가자","imageUrl":"/participant.png"}]
@@ -137,12 +137,12 @@ class MatchModifyConnectionFailureHttpIntegrationTest {
                 .andExpect(jsonPath("$.isParticipant").value(true))
                 .andExpect(jsonPath("$.participants[0].role").value("OWNER"))
                 .andExpect(jsonPath("$.participants[1].role").value("PARTICIPANT"))
-                .andExpect(jsonPath("$.participants[0].profileId").value(nullValue()))
-                .andExpect(jsonPath("$.participants[0].nickname").value(nullValue()))
-                .andExpect(jsonPath("$.participants[0].imageUrl").value(nullValue()))
-                .andExpect(jsonPath("$.participants[1].profileId").value(nullValue()))
-                .andExpect(jsonPath("$.participants[1].nickname").value(nullValue()))
-                .andExpect(jsonPath("$.participants[1].imageUrl").value(nullValue()));
+                .andExpect(jsonPath("$.participants[0].profileId").value(10))
+                .andExpect(jsonPath("$.participants[0].nickname").value("방장"))
+                .andExpect(jsonPath("$.participants[0].imageUrl").value("/owner.png"))
+                .andExpect(jsonPath("$.participants[1].profileId").value(20))
+                .andExpect(jsonPath("$.participants[1].nickname").value("참가자"))
+                .andExpect(jsonPath("$.participants[1].imageUrl").value("/participant.png"));
 
         assertThat(USER_SERVICE.requests()).extracting(LocalHttpStub.Request::path)
                 .containsExactly("/internal/users/profiles");
