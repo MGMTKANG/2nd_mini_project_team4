@@ -197,8 +197,8 @@ jobs:
           echo "\`$IMAGE_URI\`" >> "$GITHUB_STEP_SUMMARY"
 
   update-deployments:
-    name: Update match and facility deployment images
-    needs: [publish-match, publish-facility]
+    name: Update match, facility and user deployment images
+    needs: [publish-match, publish-facility, publish-user]
     if: github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     permissions:
@@ -213,6 +213,7 @@ jobs:
         env:
           MATCH_IMAGE_URI: ${{ needs.publish-match.outputs.image_uri }}
           FACILITY_IMAGE_URI: ${{ needs.publish-facility.outputs.image_uri }}
+          USER_IMAGE_URI: ${{ needs.publish-user.outputs.image_uri }}
         run: |
           set -euo pipefail
 
@@ -228,7 +229,7 @@ jobs:
           from pathlib import Path
 
           updates = {}
-          for service in ("match", "facility"):
+          for service in ("match", "facility", "user"):
               manifest = Path("k8s") / f"{service}-service" / "deployment.yaml"
               image_uri = os.environ[f"{service.upper()}_IMAGE_URI"]
               image_repo = f"088153173875.dkr.ecr.ap-northeast-2.amazonaws.com/team4/{service}-service"
@@ -251,14 +252,14 @@ jobs:
               manifest.write_text(updated)
           PY
 
-          if git diff --quiet -- k8s/match-service/deployment.yaml k8s/facility-service/deployment.yaml; then
+          if git diff --quiet -- k8s/match-service/deployment.yaml k8s/facility-service/deployment.yaml k8s/user-service/deployment.yaml; then
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- k8s/match-service/deployment.yaml k8s/facility-service/deployment.yaml
-          git commit -m "chore(deploy): match 및 facility 이미지 갱신"
+          git add -- k8s/match-service/deployment.yaml k8s/facility-service/deployment.yaml k8s/user-service/deployment.yaml
+          git commit -m "chore(deploy): match·facility·user 이미지 갱신"
           git push origin HEAD:refs/heads/develop
   facility:
     name: Facility service build and test
