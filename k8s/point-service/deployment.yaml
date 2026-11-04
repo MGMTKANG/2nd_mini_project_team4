@@ -25,7 +25,7 @@ spec:
               workload-group: sporty-apps
       containers:
         - name: point-service
-          image: 088153173875.dkr.ecr.ap-northeast-2.amazonaws.com/team4/point-service:sha-371ede3decd2191fc130e32550556b81039bab98-41899767207-1
+          image: 088153173875.dkr.ecr.ap-northeast-2.amazonaws.com/team4/point-service:sha-821b7c46ab3d44cf55830c8cf18f3906e6d2fe6c-41902163797-1
           ports:
             - name: http
               containerPort: 8085
