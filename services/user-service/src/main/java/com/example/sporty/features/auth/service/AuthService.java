@@ -52,6 +52,10 @@ public class AuthService {
                 .build();
     }
 
+    public void logout(Long userId) {
+        refreshTokenService.delete(userId);
+    }
+
     @Transactional
     public RefreshResponseDto refresh(RefreshRequestDto request) {
         if (request.getRefreshToken() == null || request.getRefreshToken().isBlank()) {

@@ -1,6 +1,7 @@
 package com.example.sporty.features.auth.controller;
 
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -17,7 +18,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
-@Tag(name = "인증(Auth)", description = "로그인 및 토큰 갱신 API")
+@Tag(name = "인증(Auth)", description = "로그인, 로그아웃 및 토큰 갱신 API")
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
@@ -29,6 +30,13 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<LoginResponseDto> login(@Valid @RequestBody LoginRequestDto request) {
         return ResponseEntity.ok(authService.login(request));
+    }
+
+    @Operation(summary = "로그아웃", description = "현재 사용자의 Refresh Token을 삭제합니다.")
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(@AuthenticationPrincipal Long userId) {
+        authService.logout(userId);
+        return ResponseEntity.noContent().build();
     }
 
     @Operation(summary = "토큰 재발급", description = "유효한 Refresh Token으로 새 Access Token을 발급받습니다.")
