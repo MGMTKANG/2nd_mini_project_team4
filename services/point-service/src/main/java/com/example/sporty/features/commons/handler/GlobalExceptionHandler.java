@@ -8,6 +8,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import com.example.sporty.features.commons.exception.points.InsufficientPointsException;
+import com.example.sporty.features.commons.exception.points.PointOperationConflictException;
+import com.example.sporty.features.commons.exception.points.PointOperationCancelledException;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -30,6 +32,24 @@ public class GlobalExceptionHandler {
                 .code("INSUFFICIENT_POINTS")
                 .message(e.getMessage())
                 .build());
+    }
+
+    @ExceptionHandler(PointOperationConflictException.class)
+    public ResponseEntity<ErrorResponse> handleOperationConflict(PointOperationConflictException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ErrorResponse.builder()
+                .code("POINT_OPERATION_CONFLICT").message(e.getMessage()).build());
+    }
+
+    @ExceptionHandler(PointOperationCancelledException.class)
+    public ResponseEntity<ErrorResponse> handleOperationCancelled(PointOperationCancelledException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ErrorResponse.builder()
+                .code("POINT_OPERATION_CANCELLED").message(e.getMessage()).build());
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ErrorResponse> handleInvalidArgument(IllegalArgumentException e) {
+        return ResponseEntity.badRequest().body(ErrorResponse.builder()
+                .code("INVALID_REQUEST").message("요청 값이 올바르지 않습니다.").build());
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)

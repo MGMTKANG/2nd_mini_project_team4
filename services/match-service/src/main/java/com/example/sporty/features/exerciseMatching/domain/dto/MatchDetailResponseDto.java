@@ -48,6 +48,9 @@ public class MatchDetailResponseDto {
 
     // 크라우드펀딩 목표 금액. 값이 없으면(null) 프론트가 펀딩 UI 자체를 숨긴다.
     private Long targetPoints;
+    // 참가 기록에 남은 실제 기여금 합계. 환불 진행 중에도 인원으로 추정하지 않는다.
+    private Long fundedPoints;
+    private boolean fundingFailed;
 
     private List<MatchParticipantSummaryDto> participants;
 

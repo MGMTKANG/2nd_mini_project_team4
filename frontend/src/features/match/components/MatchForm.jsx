@@ -105,6 +105,10 @@ export default function MatchForm({ initialValues, selectedFacility, searchFacil
     submitting.current = true; setPending(true);
     try { await onSubmit(toMatchPayload(values)); }
     catch (error) {
+      if (error.response?.data?.code === 'INSUFFICIENT_POINTS') {
+        setSubmitError('포인트가 부족합니다. 마이페이지에서 잔액을 확인해주세요.');
+        return;
+      }
       const messages = { 400: '매치 정보를 확인해주세요. 입력한 정보가 올바르지 않습니다.', 401: '로그인이 만료되었습니다. 다시 로그인해주세요.', 404: '선택한 시설을 찾을 수 없습니다. 시설을 다시 선택해주세요.' };
       if (isEdit) {
         messages[403] = '이 매치를 수정할 권한이 없습니다.';
@@ -163,8 +167,8 @@ export default function MatchForm({ initialValues, selectedFacility, searchFacil
             </select>
             {errorText('genderGroup')}
           </div>
-          <div className="match-control"><label htmlFor="maxParticipant">모집 최대 인원 (방장 포함)</label><div className="match-stepper"><button type="button" aria-label="모집 인원 줄이기" disabled={Number(values.maxParticipant) <= 1} onClick={() => update('maxParticipant', Math.max(1, Number(values.maxParticipant) - 1))}>−</button><input type="number" min="1" step="1" {...fieldProps('maxParticipant')} /><span>명</span><button type="button" aria-label="모집 인원 늘리기" onClick={() => update('maxParticipant', Number(values.maxParticipant) + 1)}>+</button></div>{errorText('maxParticipant')}</div>
-          <div className="match-control"><label htmlFor="targetPoints">시설 예약 비용 (총액, 선택)</label><input type="number" min="1" step="1" placeholder="예) 6000" {...fieldProps('targetPoints')} /><span className="match-fact-caption">{(() => { const entry = entryPointsOf(values.targetPoints, values.maxParticipant); return entry ? `1인당 참가비 ${entry.toLocaleString()}원 (${values.maxParticipant}명 기준)` : '총 예약 비용과 모집 인원을 입력하면 1인당 참가비가 계산돼요.'; })()}</span>{errorText('targetPoints')}</div>
+          <div className="match-control"><label htmlFor="maxParticipant">모집 최대 인원 (방장 포함)</label><div className="match-stepper"><button type="button" aria-label="모집 인원 줄이기" disabled={Number(values.maxParticipant) <= 2} onClick={() => update('maxParticipant', Math.max(2, Number(values.maxParticipant) - 1))}>−</button><input type="number" min="2" step="1" {...fieldProps('maxParticipant')} /><span>명</span><button type="button" aria-label="모집 인원 늘리기" onClick={() => update('maxParticipant', Number(values.maxParticipant) + 1)}>+</button></div>{errorText('maxParticipant')}</div>
+          <div className="match-control"><label htmlFor="targetPoints">시설 예약 비용 (총액, 선택)</label><input type="number" min="1" step="1" placeholder="예) 6000" disabled={isEdit} {...fieldProps('targetPoints')} /><span className="match-fact-caption">{(() => { const entry = entryPointsOf(values.targetPoints, values.maxParticipant); return entry ? `1인당 참가비 ${entry.toLocaleString()}원 (${values.maxParticipant}명 기준)` : '총 예약 비용과 모집 인원을 입력하면 1인당 참가비가 계산돼요.'; })()}</span>{isEdit && <p className="match-fact-caption">시설 예약 비용은 개설 후 변경할 수 없습니다.</p>}{errorText('targetPoints')}</div>
           <div className="match-time-grid"><div className="match-control"><label htmlFor="startTime">시작 시간</label><input type="time" {...fieldProps('startTime', 'startAt')} /></div><div className="match-control"><label htmlFor="endTime">종료 시간</label><input type="time" {...fieldProps('endTime', 'endAt')} /></div><div className="match-control match-end-date"><label htmlFor="endDate">종료 날짜 (미선택 시 경기 당일)</label><input type="date" {...fieldProps('endDate', 'endAt')} />{errorText('endAt')}</div></div>
           <div className="match-control"><span id="match-level-label">경기 실력 레벨</span><div className="match-levels" role="group" aria-labelledby="match-level-label">{SKILL_LEVELS.map(level => <button type="button" key={level.value} aria-pressed={values.skillLevel === level.value} className={values.skillLevel === level.value ? 'is-selected' : ''} onClick={() => update('skillLevel', level.value)}>{level.label}</button>)}</div>{errorText('skillLevel')}</div>
         </div>

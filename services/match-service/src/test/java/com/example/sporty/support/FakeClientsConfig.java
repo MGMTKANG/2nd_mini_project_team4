@@ -7,7 +7,13 @@ import com.example.sporty.features.exerciseMatching.service.MatchUserGuard;
 import com.example.sporty.features.exerciseMatching.service.ContributionRefundService;
 
 /** 저장소 테스트에서 유저·체육시설 서비스 호출을 메모리 구현으로 대체한다. */
-@Import({MatchUserGuard.class, ContributionRefundService.class})
+@Import({MatchUserGuard.class, ContributionRefundService.class,
+        com.example.sporty.features.exerciseMatching.service.PointRefundProcessor.class,
+        com.example.sporty.features.exerciseMatching.service.PointDebitJournal.class,
+        com.example.sporty.features.exerciseMatching.service.PointDebitService.class,
+        com.example.sporty.features.exerciseMatching.service.PointDebitRecovery.class,
+        com.example.sporty.features.exerciseMatching.service.FundingFailureService.class,
+        com.example.sporty.features.exerciseMatching.service.FundingRefundService.class})
 @TestConfiguration
 public class FakeClientsConfig {
 

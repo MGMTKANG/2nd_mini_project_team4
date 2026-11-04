@@ -17,7 +17,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 public final class MatchDatabaseCleanup {
 
     private static final String[] TABLES = {
-            "match_participant", "match", "processed_event", "match_user_state"
+            "match_participant", "match", "match_point_debit", "match_point_refund", "processed_event", "match_user_state"
     };
 
     private MatchDatabaseCleanup() {

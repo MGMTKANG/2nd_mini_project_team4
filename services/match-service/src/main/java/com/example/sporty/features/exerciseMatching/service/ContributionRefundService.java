@@ -1,34 +1,41 @@
 package com.example.sporty.features.exerciseMatching.service;
 
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
-
-import com.example.sporty.features.exerciseMatching.client.PointClient;
-import com.example.sporty.features.exerciseMatching.domain.entity.MatchParticipantEntity;
-import com.example.sporty.features.exerciseMatching.repository.MatchParticipantRepository;
-
+import java.nio.charset.StandardCharsets;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.*;
+import org.springframework.transaction.support.*;
+import com.example.sporty.features.exerciseMatching.domain.entity.*;
+import com.example.sporty.features.exerciseMatching.repository.PointRefundRepository;
 
-/**
- * 참가자 한 명의 환불을 호출자의 트랜잭션과 분리된 새 트랜잭션에서 커밋한다.
- * failFunding처럼 여러 참가자를 순서대로 환불하다가 한 명에서 실패해도, 이미
- * point-service에 커밋된 앞선 환불까지 로컬 트랜잭션 롤백으로 "안 된 것처럼" 되돌아가지
- * 않게 하기 위함이다 (UserWithdrawnHandler와 같은 REQUIRES_NEW 패턴).
- */
+/** Local deletion and durable refund intent commit together; no remote credit before that commit. */
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class ContributionRefundService {
-    private final PointClient pointClient;
-    private final MatchParticipantRepository matchParticipantRepository;
+    private final PointRefundRepository repository;
+    private final PointRefundProcessor processor;
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional(propagation = Propagation.MANDATORY)
     public void refundContribution(MatchParticipantEntity participant) {
-        if (participant.getContributionPoints() == null || participant.getContributionPoints() <= 0) {
-            return;
-        }
-        pointClient.refund(participant.getUserId(), participant.getContributionPoints());
+        Long amount = participant.getContributionPoints();
+        if (amount == null || amount <= 0) return;
+        boolean legacy = participant.getPointOperationId() == null;
+        String id = legacy ? UUID.nameUUIDFromBytes(
+                ("legacy-match-refund:" + participant.getId()).getBytes(StandardCharsets.UTF_8)).toString()
+                : participant.getPointOperationId();
+        repository.save(new PointRefundEntity(id, participant.getUserId(), amount, legacy ? "REFUND" : "CANCEL"));
         participant.clearContribution();
-        matchParticipantRepository.save(participant);
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override public void afterCommit() {
+                try { processor.process(id); }
+                catch (RuntimeException failure) {
+                    // Local action is committed; report acceptance and retry the durable outbox later.
+                    log.warn("포인트 환불 재시도 대기: operationId={}, error={}", id, failure.getClass().getSimpleName());
+                }
+            }
+        });
     }
 }

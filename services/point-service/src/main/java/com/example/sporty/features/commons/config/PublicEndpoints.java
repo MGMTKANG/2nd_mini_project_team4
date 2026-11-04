@@ -13,6 +13,10 @@ public final class PublicEndpoints {
     public static final RequestMatcher MATCHER = new OrRequestMatcher(
             PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, "/internal/points/{userId}/deduct"),
             PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, "/internal/points/{userId}/refund"),
+            PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, "/internal/points/{userId}/cancel"),
+            PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, "/internal/points/{userId}/operations/deduct"),
+            PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, "/internal/points/{userId}/operations/refund"),
+            PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.POST, "/internal/points/{userId}/operations/cancel"),
             PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, "/actuator/health"),
             PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, "/actuator/health/liveness"),
             PathPatternRequestMatcher.withDefaults().matcher(HttpMethod.GET, "/actuator/health/readiness"),

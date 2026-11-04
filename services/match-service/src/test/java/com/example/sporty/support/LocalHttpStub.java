@@ -25,6 +25,7 @@ public final class LocalHttpStub implements AutoCloseable {
     private final ExecutorService executor;
     private final Map<String, Response> responses = new ConcurrentHashMap<>();
     private final List<Request> requests = new CopyOnWriteArrayList<>();
+    private final List<String> requestBodies = new CopyOnWriteArrayList<>();
 
     public LocalHttpStub() {
         try {
@@ -58,9 +59,12 @@ public final class LocalHttpStub implements AutoCloseable {
         return List.copyOf(requests);
     }
 
+    public List<String> requestBodies() { return List.copyOf(requestBodies); }
+
     public void reset() {
         responses.clear();
         requests.clear();
+        requestBodies.clear();
     }
 
     @Override
@@ -72,6 +76,7 @@ public final class LocalHttpStub implements AutoCloseable {
     private void handle(HttpExchange exchange) throws IOException {
         try {
             String path = exchange.getRequestURI().getPath();
+            requestBodies.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             requests.add(new Request(exchange.getRequestMethod(), path,
                     decodeQuery(exchange.getRequestURI().getRawQuery())));
             Response response = responses.getOrDefault(path, new Response(404,

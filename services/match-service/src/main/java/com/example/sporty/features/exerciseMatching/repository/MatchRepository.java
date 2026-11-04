@@ -25,6 +25,19 @@ public interface MatchRepository extends JpaRepository<MatchEntity, Long> {
     @Query("select m from MatchEntity m where m.id = :matchId")
     Optional<MatchEntity> findByIdForUpdate(@Param("matchId") Long matchId);
 
+    // Failed funding is durable before refund calls. Page by ID so permanently failing rows
+    // do not starve later refunds; the scheduler wraps to the beginning after the last ID.
+    @Query("""
+        select distinct p.match.id
+        from MatchParticipantEntity p
+        where p.match.fundingFailed = true
+          and p.contributionPoints > 0
+          and p.match.id > :afterId
+        order by p.match.id
+        """)
+    List<Long> findFundingRefundPendingIdsAfter(@Param("afterId") Long afterId,
+            org.springframework.data.domain.Pageable pageable);
+
     // 지역·무료 여부는 체육시설 서비스가 고른 svcId 목록으로 거른다.
     // filterByServiceIds가 false이면 serviceIds는 쓰이지 않는 자리 채움 값이다.
     @Query ("""

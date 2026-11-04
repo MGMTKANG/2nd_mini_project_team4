@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS `match` (
     gender_group VARCHAR(10) NOT NULL,
     service_id VARCHAR(50) NOT NULL,
     target_points BIGINT NULL,
+    funding_failed BOOLEAN NOT NULL DEFAULT FALSE,
     PRIMARY KEY (id),
     CONSTRAINT ck_match_valid_fields CHECK (
         CHAR_LENGTH(TRIM(title)) > 0 AND max_participant >= 1
@@ -34,6 +35,7 @@ CREATE TABLE IF NOT EXISTS match_participant (
     updated_at TIMESTAMP NOT NULL,
     role VARCHAR(20) NOT NULL,
     contribution_points BIGINT NULL,
+    point_operation_id VARCHAR(36) NULL,
     PRIMARY KEY (match_participant_id),
     CONSTRAINT uk_match_participant_match_user UNIQUE (match_id, user_id),
     CONSTRAINT fk_match_participant_match FOREIGN KEY (match_id) REFERENCES `match` (id)
@@ -52,4 +54,23 @@ CREATE TABLE IF NOT EXISTS match_user_state (
     user_id BIGINT NOT NULL,
     withdrawn BOOLEAN NOT NULL DEFAULT FALSE,
     PRIMARY KEY (user_id)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS match_point_debit (
+    operation_id VARCHAR(36) NOT NULL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    amount BIGINT NOT NULL,
+    status VARCHAR(12) NOT NULL,
+    created_at TIMESTAMP NOT NULL,
+    INDEX ix_match_point_debit_recovery (status, created_at)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS match_point_refund (
+    operation_id VARCHAR(36) NOT NULL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    amount BIGINT NOT NULL,
+    kind VARCHAR(8) NOT NULL,
+    status VARCHAR(12) NOT NULL,
+    created_at TIMESTAMP NOT NULL,
+    INDEX ix_match_point_refund_recovery (status, operation_id)
 ) ENGINE=InnoDB;

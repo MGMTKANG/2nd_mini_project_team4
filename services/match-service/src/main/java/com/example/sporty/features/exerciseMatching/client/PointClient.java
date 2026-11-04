@@ -6,6 +6,10 @@ public interface PointClient {
     // 잔액 부족 시 commons.exception.exerciseMatching.InsufficientPointsException을 던진다.
     Long deduct(Long userId, Long amount);
 
+    Long deduct(Long userId, Long amount, String operationId);
+    Long refund(Long userId, Long amount, String operationId);
+    Long cancel(Long userId, Long amount, String operationId);
+
     // 펀딩 실패(정원 미달) 보상 트랜잭션에서 호출한다.
     Long refund(Long userId, Long amount);
 }

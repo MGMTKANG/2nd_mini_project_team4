@@ -30,6 +30,7 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -57,8 +58,12 @@ import jakarta.persistence.EntityManagerFactory;
 class MatchSchemaMariaDBIntegrationTest {
     private static final FileSystemResource DEPLOYMENT_SQL =
             new FileSystemResource("docs/sql/2026-11-02-match-schema.sql");
+    private static final FileSystemResource FUNDING_FAILURE_SQL =
+            new FileSystemResource("docs/sql/2026-11-05-match-funding-failed.sql");
+    private static final FileSystemResource POINT_RECOVERY_SQL =
+            new FileSystemResource("docs/sql/2026-11-05-point-debit-recovery.sql");
     private static final List<String> TABLES =
-            List.of("match", "match_participant", "processed_event", "match_user_state");
+            List.of("match", "match_participant", "processed_event", "match_user_state", "match_point_debit", "match_point_refund");
     private static final LocalDateTime START_AT = LocalDateTime.of(2030, 1, 1, 10, 0);
 
     @Autowired private ConfigurableApplicationContext context;
@@ -140,7 +145,8 @@ class MatchSchemaMariaDBIntegrationTest {
                 new Column("sport_type", "varchar", 15L, false),
                 new Column("gender_group", "varchar", 10L, false),
                 new Column("service_id", "varchar", 50L, false),
-                new Column("target_points", "bigint", null, true));
+                new Column("target_points", "bigint", null, true),
+                new Column("funding_failed", "tinyint", null, false));
         assertColumns("match_participant",
                 new Column("match_participant_id", "bigint", null, false),
                 new Column("user_id", "bigint", null, false),
@@ -148,7 +154,21 @@ class MatchSchemaMariaDBIntegrationTest {
                 new Column("created_at", "timestamp", null, false),
                 new Column("updated_at", "timestamp", null, false),
                 new Column("role", "varchar", 20L, false),
-                new Column("contribution_points", "bigint", null, true));
+                new Column("contribution_points", "bigint", null, true),
+                new Column("point_operation_id", "varchar", 36L, true));
+        assertColumns("match_point_debit",
+                new Column("operation_id", "varchar", 36L, false),
+                new Column("user_id", "bigint", null, false),
+                new Column("amount", "bigint", null, false),
+                new Column("status", "varchar", 12L, false),
+                new Column("created_at", "timestamp", null, false));
+        assertColumns("match_point_refund",
+                new Column("operation_id", "varchar", 36L, false),
+                new Column("user_id", "bigint", null, false),
+                new Column("amount", "bigint", null, false),
+                new Column("kind", "varchar", 8L, false),
+                new Column("status", "varchar", 12L, false),
+                new Column("created_at", "timestamp", null, false));
         assertColumns("processed_event",
                 new Column("consumer_name", "varchar", 100L, false),
                 new Column("event_id", "char", 36L, false),
@@ -162,13 +182,15 @@ class MatchSchemaMariaDBIntegrationTest {
                 """, String.class)).isEqualTo("tinyint(1)");
         assertThat(jdbc.queryForList(
                 "SELECT ENGINE FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE()",
-                String.class)).hasSize(4).containsOnly("InnoDB");
+                String.class)).hasSize(TABLES.size()).containsOnly("InnoDB");
         assertThat(jdbc.queryForList("""
                 SELECT CONCAT(TABLE_NAME, '.', COLUMN_NAME) FROM information_schema.COLUMNS
                 WHERE TABLE_SCHEMA=DATABASE() AND EXTRA LIKE '%auto_increment%'
                 """, String.class)).containsExactlyInAnyOrder("match.id", "match_participant.match_participant_id");
         assertThat(constraintColumns("match", "PRIMARY")).containsExactly("id");
         assertThat(constraintColumns("match_participant", "PRIMARY")).containsExactly("match_participant_id");
+        assertThat(constraintColumns("match_point_debit", "PRIMARY")).containsExactly("operation_id");
+        assertThat(constraintColumns("match_point_refund", "PRIMARY")).containsExactly("operation_id");
         assertThat(constraintColumns("match_user_state", "PRIMARY")).containsExactly("user_id");
         assertThat(constraintColumns("processed_event", "PRIMARY")).containsExactly("consumer_name", "event_id");
         assertThat(constraintColumns("match_participant", "uk_match_participant_match_user"))
@@ -194,6 +216,17 @@ class MatchSchemaMariaDBIntegrationTest {
         assertThat(columnDefault("match", "status")).isEqualTo("'RECRUITING'");
         assertThat(columnDefault("match", "skill_level")).isEqualTo("'BEGINNER'");
         assertThat(columnDefault("match_user_state", "withdrawn")).isEqualTo("0");
+        assertThat(columnDefault("match", "funding_failed")).isEqualTo("0");
+        assertThat(jdbc.queryForList("""
+                SELECT COLUMN_NAME FROM information_schema.STATISTICS
+                WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='match_point_debit'
+                  AND INDEX_NAME='ix_match_point_debit_recovery' ORDER BY SEQ_IN_INDEX
+                """, String.class)).containsExactly("status", "created_at");
+        assertThat(jdbc.queryForList("""
+                SELECT COLUMN_NAME FROM information_schema.STATISTICS
+                WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='match_point_refund'
+                  AND INDEX_NAME='ix_match_point_refund_recovery' ORDER BY SEQ_IN_INDEX
+                """, String.class)).containsExactly("status", "operation_id");
     }
 
     @Test
@@ -207,7 +240,9 @@ class MatchSchemaMariaDBIntegrationTest {
                 .isEqualTo("BEGINNER");
         assertThat(jdbc.queryForObject("SELECT description FROM `match` WHERE id=?", String.class, matchId)).isNull();
         assertThat(jdbc.queryForObject("SELECT target_points FROM `match` WHERE id=?", Long.class, matchId)).isNull();
+        assertThat(jdbc.queryForObject("SELECT funding_failed FROM `match` WHERE id=?", Boolean.class, matchId)).isFalse();
         insertParticipant(matchId, 101L);
+        assertThat(jdbc.queryForObject("SELECT point_operation_id FROM match_participant WHERE match_id=?", String.class, matchId)).isNull();
         assertThatThrownBy(() -> insertParticipant(matchId, 101L)).isInstanceOf(DataIntegrityViolationException.class);
         assertThatThrownBy(() -> insertParticipant(matchId + 1, 102L)).isInstanceOf(DataIntegrityViolationException.class);
         assertThatThrownBy(() -> jdbc.update("DELETE FROM `match` WHERE id=?", matchId))
@@ -227,10 +262,17 @@ class MatchSchemaMariaDBIntegrationTest {
 
         // TIMESTAMP의 NULL 대입 처리는 서버 옵션 영향을 받으므로 NOT NULL 메타데이터로 확인한다.
         assertNullsRejected("match", List.of("title", "start_at", "end_at", "max_participant", "status",
-                "skill_level", "sport_type", "gender_group", "service_id"));
+                "skill_level", "sport_type", "gender_group", "service_id", "funding_failed"));
         assertNullsRejected("match_participant", List.of("user_id", "match_id", "role"));
         assertNullsRejected("processed_event", List.of("consumer_name", "event_id", "processed_at"));
         assertNullsRejected("match_user_state", List.of("user_id", "withdrawn"));
+        String operationId = UUID.randomUUID().toString();
+        insertDebit(operationId, 101L);
+        assertThatThrownBy(() -> insertDebit(operationId, 101L)).isInstanceOf(DataIntegrityViolationException.class);
+        assertNullsRejected("match_point_debit", List.of("operation_id", "user_id", "amount", "status"));
+        insertRefund(operationId, 101L);
+        assertThatThrownBy(() -> insertRefund(operationId, 101L)).isInstanceOf(DataIntegrityViolationException.class);
+        assertNullsRejected("match_point_refund", List.of("operation_id", "user_id", "amount", "kind", "status"));
         for (String title : List.of("", "   ")) {
             assertThatThrownBy(() -> insertMatch(title, 1, START_AT, START_AT.plusHours(1), "S100"))
                     .isInstanceOf(DataIntegrityViolationException.class);
@@ -267,16 +309,90 @@ class MatchSchemaMariaDBIntegrationTest {
         insertParticipant(matchId, 101L);
         insertEvent("consumer-a", UUID.randomUUID().toString());
         jdbc.update("INSERT INTO match_user_state (user_id, withdrawn) VALUES (?, TRUE)", 101L);
+        jdbc.update("UPDATE `match` SET funding_failed=TRUE WHERE id=?", matchId);
+        String operationId = UUID.randomUUID().toString();
+        insertDebit(operationId, 101L);
+        insertRefund(operationId, 101L);
+        jdbc.update("UPDATE match_participant SET point_operation_id=? WHERE match_id=?", operationId, matchId);
         Map<String, List<Map<String, Object>>> before = tableData();
         before.forEach((table, rows) -> assertThat(rows).as(table).hasSize(1));
 
         try (Connection connection = dataSource.getConnection()) {
             ScriptUtils.executeSqlScript(connection, DEPLOYMENT_SQL);
+            ScriptUtils.executeSqlScript(connection, FUNDING_FAILURE_SQL);
+            ScriptUtils.executeSqlScript(connection, POINT_RECOVERY_SQL);
         }
         entityManagerFactory.unwrap(SessionFactory.class).getSchemaManager().validateMappedObjects();
         assertThat(tableData()).isEqualTo(before);
         assertThat(jdbc.queryForObject("SELECT withdrawn FROM match_user_state WHERE user_id=?", Boolean.class, 101L))
                 .isTrue();
+    }
+
+    @Test
+    void additiveMigrationsPreserveExistingFundedAndRefundedRows() throws Exception {
+        // 별도 테스트 DB를 사용해 부팅된 애플리케이션의 스키마를 제거하거나 변경하지 않는다.
+        try (MariaDBContainer<?> database = new MariaDBContainer<>("mariadb:11.4.8")
+                .withDatabaseName("match_upgrade_test")
+                .withUsername("match_upgrade_test").withPassword("match_upgrade_test")) {
+            database.start();
+            DataSource legacySource = new DriverManagerDataSource(database.getJdbcUrl(),
+                    database.getUsername(), database.getPassword());
+            JdbcTemplate legacy = new JdbcTemplate(legacySource);
+            // 변경 대상 컬럼의 기존 타입/제약과 FK를 보존한 이전 버전 fixture.
+            legacy.execute("""
+                    CREATE TABLE `match` (id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                        title VARCHAR(50) NOT NULL, status VARCHAR(10) NOT NULL DEFAULT 'RECRUITING',
+                        target_points BIGINT NULL) ENGINE=InnoDB
+                    """);
+            legacy.execute("""
+                    CREATE TABLE match_participant (match_participant_id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+                        user_id BIGINT NOT NULL, match_id BIGINT NOT NULL, contribution_points BIGINT NULL,
+                        CONSTRAINT fk_legacy_match FOREIGN KEY (match_id) REFERENCES `match` (id)) ENGINE=InnoDB
+                    """);
+            legacy.update("INSERT INTO `match` (id,title,status,target_points) VALUES (1,'진행 중 펀딩','RECRUITING',10000),(2,'과거 환불','CLOSED',10000)");
+            legacy.update("INSERT INTO match_participant (user_id,match_id,contribution_points) VALUES (101,1,2500),(102,2,NULL)");
+            var beforeMatches = legacy.queryForList("SELECT id,title,status,target_points FROM `match` ORDER BY id");
+            var beforeParticipants = legacy.queryForList("SELECT match_participant_id,user_id,match_id,contribution_points FROM match_participant ORDER BY match_participant_id");
+            try (Connection connection = legacySource.getConnection()) {
+                ScriptUtils.executeSqlScript(connection, FUNDING_FAILURE_SQL);
+                ScriptUtils.executeSqlScript(connection, POINT_RECOVERY_SQL);
+            }
+            assertThat(legacy.queryForList("SELECT id,title,status,target_points FROM `match` ORDER BY id")).isEqualTo(beforeMatches);
+            assertThat(legacy.queryForList("SELECT match_participant_id,user_id,match_id,contribution_points FROM match_participant ORDER BY match_participant_id")).isEqualTo(beforeParticipants);
+            // 과거 CLOSED를 근거 없이 펀딩 실패로 추정하지 않는다.
+            assertThat(legacy.queryForList("SELECT funding_failed FROM `match`", Boolean.class)).containsOnly(false);
+            assertThat(legacy.queryForList("SELECT point_operation_id FROM match_participant", String.class)).containsOnlyNulls();
+            assertThat(legacy.queryForObject("SELECT COUNT(*) FROM match_point_debit", Long.class)).isZero();
+            assertThat(legacy.queryForObject("SELECT COUNT(*) FROM match_point_refund", Long.class)).isZero();
+
+            String operationId = UUID.randomUUID().toString();
+            legacy.update("INSERT INTO match_point_debit (operation_id,user_id,amount,status,created_at) VALUES (?,101,2500,'PENDING',?)", operationId, Timestamp.valueOf(START_AT));
+            legacy.update("INSERT INTO match_point_refund (operation_id,user_id,amount,kind,status,created_at) VALUES (?,101,2500,'CANCEL','PENDING',?)", operationId, Timestamp.valueOf(START_AT));
+            legacy.update("UPDATE `match` SET funding_failed=TRUE WHERE id=1");
+            legacy.update("UPDATE match_participant SET point_operation_id=? WHERE match_id=1", operationId);
+            var migratedMatches = legacy.queryForList("SELECT * FROM `match` ORDER BY id");
+            var migratedParticipants = legacy.queryForList("SELECT * FROM match_participant ORDER BY match_participant_id");
+            var migratedDebits = legacy.queryForList("SELECT * FROM match_point_debit");
+            var migratedRefunds = legacy.queryForList("SELECT * FROM match_point_refund");
+            try (Connection connection = legacySource.getConnection()) {
+                ScriptUtils.executeSqlScript(connection, FUNDING_FAILURE_SQL);
+                ScriptUtils.executeSqlScript(connection, POINT_RECOVERY_SQL);
+            }
+            assertThat(legacy.queryForList("SELECT * FROM `match` ORDER BY id")).isEqualTo(migratedMatches);
+            assertThat(legacy.queryForList("SELECT * FROM match_participant ORDER BY match_participant_id")).isEqualTo(migratedParticipants);
+            assertThat(legacy.queryForList("SELECT * FROM match_point_debit")).isEqualTo(migratedDebits);
+            assertThat(legacy.queryForList("SELECT * FROM match_point_refund")).isEqualTo(migratedRefunds);
+        }
+    }
+
+    private void insertRefund(String operationId, long userId) {
+        jdbc.update("INSERT INTO match_point_refund (operation_id,user_id,amount,kind,status,created_at) VALUES (?,?,2500,'CANCEL','PENDING',?)",
+                operationId, userId, Timestamp.valueOf(START_AT));
+    }
+
+    private void insertDebit(String operationId, long userId) {
+        jdbc.update("INSERT INTO match_point_debit (operation_id,user_id,amount,status,created_at) VALUES (?,?,2500,'PENDING',?)",
+                operationId, userId, Timestamp.valueOf(START_AT));
     }
 
     private void assertColumns(String table, Column... expected) {

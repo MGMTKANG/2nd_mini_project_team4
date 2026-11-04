@@ -64,9 +64,14 @@ import io.jsonwebtoken.security.Keys;
 
 // 실제 JWT 필터 -> Controller -> Service -> JSON 응답을 검증하며 DB 조회만 대체한다.
 @WebMvcTest(MatchController.class)
-@Import({MatchService.class, ContributionRefundService.class, SecurityConfig.class, JwtAuthenticationFilter.class})
+@Import({MatchService.class, SecurityConfig.class, JwtAuthenticationFilter.class})
 @TestPropertySource(properties = "jwt.secret=test-only-signing-secret-with-at-least-32-bytes")
 class MatchDetailControllerTest {
+    @MockitoBean private com.example.sporty.features.exerciseMatching.service.PointDebitService pointDebitService;
+    @MockitoBean private com.example.sporty.features.exerciseMatching.service.FundingFailureService fundingFailureService;
+    @MockitoBean private com.example.sporty.features.exerciseMatching.service.FundingRefundService fundingRefundService;
+    @MockitoBean private com.example.sporty.features.exerciseMatching.service.ContributionRefundService contributionRefundService;
+
     @MockitoBean private MatchUserGuard userGuard;
 
     private static final String SECRET = "test-only-signing-secret-with-at-least-32-bytes";
