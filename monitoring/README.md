@@ -16,6 +16,7 @@
 | `grafana/provisioning/datasources/datasource.yml` | Grafana 기동 시 Prometheus 데이터소스 자동 등록 (uid `prometheus`) |
 | `grafana/provisioning/dashboards/dashboards.yml` | 같은 폴더의 대시보드 JSON 자동 등록 (Sporty 폴더) |
 | `grafana/provisioning/dashboards/sporty-gateway.json` | `Sporty - API Gateway` 대시보드 정의 |
+| `k6/matches.js` | k6 부하 테스트 스크립트 (스모크 / 부하 프로필) |
 
 ## 실행
 
@@ -108,6 +109,37 @@ docker compose -f compose.match-local.yml start match-service    # 장애 화면
 
 수동 Import한 대시보드는 컨테이너를 내리면 초기화됨 (`down` 후 재실행 시 다시 Import 필요).
 
+## 부하 테스트 (k6)
+
+`k6/matches.js`로 gateway 경유 `GET /api/matches`(공개 API)에 부하를 주고 대시보드 지표 변화 확인. k6 설치 없이 Docker 이미지로 실행.
+
+사전 조건: 위 "동작 확인" 1~4단계 완료 (모니터링, gateway, match-service 실행 및 `200` 확인).
+
+| TC | 시나리오 | 부하 | 합격 기준 | 대시보드 확인 |
+|---|---|---|---|---|
+| K-1 | 스모크 | 1 VU · 30초 | 실패율 0%, p95 < 500ms, `checks` 100% | 기준선 처리량·응답시간 |
+| K-2 | 부하 | 0 → 20 → 50 VU 단계 증가 · 약 3분 20초 | 실패율 < 1%, p95 < 1s, `checks` > 99% | 처리량 단계별 증가, p95 변화, gateway CPU·Heap |
+| K-3 | 부하 중 장애 | K-2 실행 중 match-service 중지 → 재시작 | 기준 미달(의도된 실패) 후 회복 | 부하 상태에서 5xx 에러율 급증 → 복구 |
+
+```bash
+# 저장소 루트에서. 스크립트는 표준입력(<)으로 전달 (Windows 경로 마운트 문제 회피)
+
+# K-1 스모크
+docker run --rm -i grafana/k6:1.0.0 run - < monitoring/k6/matches.js
+
+# K-2 부하
+docker run --rm -i -e PROFILE=load grafana/k6:1.0.0 run - < monitoring/k6/matches.js
+
+# K-3 부하 중 장애: K-2 실행 후 약 1분 시점에 다른 터미널(services/match-service 위치)에서
+docker compose -f compose.match-local.yml stop match-service
+docker compose -f compose.match-local.yml start match-service    # 30초 정도 뒤 실행
+```
+
+- VU 1명당 초당 약 1회 요청 (`sleep(1)`) → 50 VU 구간은 약 50 RPS
+- 대상 주소 기본값 `http://host.docker.internal:8000` (컨테이너 안의 `localhost`는 내 PC가 아님). 변경 시 `-e BASE_URL=...`
+- 결과 요약의 `http_req_failed`, `http_req_duration`의 `p(95)`, `checks`(상태 `200` 비율) 확인. 요청 timeout 5초 (응답 없는 요청도 실패로 기록). 기준 통과 시 `✓`, 미달 시 `✗` 표시 및 종료 코드 99 (K-3은 미달이 정상)
+- 발표용 캡처는 대시보드 시간 범위를 테스트 구간 전체로 지정
+
 ## 문제 해결
 
 | 증상 | 원인 / 조치 |
@@ -118,6 +150,7 @@ docker compose -f compose.match-local.yml start match-service    # 장애 화면
 | Prometheus targets에서 `api-gateway`(8000) `DOWN` | gateway 미실행 상태 |
 | p95 패널만 `No data` | gateway 재시작 전이라 histogram 미반영. `curl -s localhost:8000/actuator/prometheus \| grep -c '^spring_cloud_gateway_requests_seconds_bucket'` 결과가 0이면 gateway 재시작 |
 | gateway 경유 `/api/matches`가 `500` | match-service 미기동 또는 기동 중. `curl localhost:8082/actuator/health`로 직접 확인 |
+| k6 결과 `http_req_failed` 100%, 에러 `connection refused` | gateway 미실행, 또는 `BASE_URL`을 `localhost`로 지정 (컨테이너 기준이라 `host.docker.internal` 필요) |
 
 ## 서비스에 Prometheus 적용하기
 
