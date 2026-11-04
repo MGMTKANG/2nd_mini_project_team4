@@ -139,14 +139,16 @@ class MatchSchemaMariaDBIntegrationTest {
                 new Column("skill_level", "varchar", 30L, false),
                 new Column("sport_type", "varchar", 15L, false),
                 new Column("gender_group", "varchar", 10L, false),
-                new Column("service_id", "varchar", 50L, false));
+                new Column("service_id", "varchar", 50L, false),
+                new Column("target_points", "bigint", null, true));
         assertColumns("match_participant",
                 new Column("match_participant_id", "bigint", null, false),
                 new Column("user_id", "bigint", null, false),
                 new Column("match_id", "bigint", null, false),
                 new Column("created_at", "timestamp", null, false),
                 new Column("updated_at", "timestamp", null, false),
-                new Column("role", "varchar", 20L, false));
+                new Column("role", "varchar", 20L, false),
+                new Column("contribution_points", "bigint", null, true));
         assertColumns("processed_event",
                 new Column("consumer_name", "varchar", 100L, false),
                 new Column("event_id", "char", 36L, false),
@@ -187,7 +189,8 @@ class MatchSchemaMariaDBIntegrationTest {
                 WHERE CONSTRAINT_SCHEMA=DATABASE() AND TABLE_NAME='match' AND CONSTRAINT_NAME='ck_match_valid_fields'
                 """, String.class);
         assertThat(Objects.requireNonNull(check).toLowerCase(Locale.ROOT).replace("`", "").replaceAll("\\s+", ""))
-                .contains("char_length(trim(title))>0", "max_participant>=1", "end_at>start_at", "char_length(trim(service_id))>0");
+                .contains("char_length(trim(title))>0", "max_participant>=1", "end_at>start_at",
+                        "char_length(trim(service_id))>0", "(target_pointsisnullortarget_points>0)");
         assertThat(columnDefault("match", "status")).isEqualTo("'RECRUITING'");
         assertThat(columnDefault("match", "skill_level")).isEqualTo("'BEGINNER'");
         assertThat(columnDefault("match_user_state", "withdrawn")).isEqualTo("0");
@@ -203,6 +206,7 @@ class MatchSchemaMariaDBIntegrationTest {
         assertThat(jdbc.queryForObject("SELECT skill_level FROM `match` WHERE id=?", String.class, matchId))
                 .isEqualTo("BEGINNER");
         assertThat(jdbc.queryForObject("SELECT description FROM `match` WHERE id=?", String.class, matchId)).isNull();
+        assertThat(jdbc.queryForObject("SELECT target_points FROM `match` WHERE id=?", Long.class, matchId)).isNull();
         insertParticipant(matchId, 101L);
         assertThatThrownBy(() -> insertParticipant(matchId, 101L)).isInstanceOf(DataIntegrityViolationException.class);
         assertThatThrownBy(() -> insertParticipant(matchId + 1, 102L)).isInstanceOf(DataIntegrityViolationException.class);
@@ -233,6 +237,13 @@ class MatchSchemaMariaDBIntegrationTest {
         }
         assertThatThrownBy(() -> insertMatch("정원 오류", 0, START_AT, START_AT.plusHours(1), "S100"))
                 .isInstanceOf(DataIntegrityViolationException.class);
+        for (long targetPoints : List.of(0L, -1L)) {
+            assertThatThrownBy(() -> insertMatch("목표 포인트 오류", 1, START_AT, START_AT.plusHours(1), "S100", targetPoints))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+        }
+        long fundedMatchId = insertMatch("목표 포인트 최솟값", 1, START_AT, START_AT.plusHours(1), "S100", 1L);
+        assertThat(jdbc.queryForObject("SELECT target_points FROM `match` WHERE id=?", Long.class, fundedMatchId))
+                .isEqualTo(1L);
         for (LocalDateTime endAt : List.of(START_AT, START_AT.minusHours(1))) {
             assertThatThrownBy(() -> insertMatch("시간 오류", 1, START_AT, endAt, "S100"))
                     .isInstanceOf(DataIntegrityViolationException.class);
@@ -305,13 +316,19 @@ class MatchSchemaMariaDBIntegrationTest {
     }
 
     private long insertMatch(String title, int capacity, LocalDateTime startAt, LocalDateTime endAt, String serviceId) {
+        return insertMatch(title, capacity, startAt, endAt, serviceId, null);
+    }
+
+    private long insertMatch(String title, int capacity, LocalDateTime startAt, LocalDateTime endAt,
+            String serviceId, Long targetPoints) {
         GeneratedKeyHolder keys = new GeneratedKeyHolder();
         Object[] values = {title, startAt, endAt, capacity, "SOCCER", "MIXED", serviceId,
-                Timestamp.valueOf(START_AT), Timestamp.valueOf(START_AT)};
+                Timestamp.valueOf(START_AT), Timestamp.valueOf(START_AT), targetPoints};
         jdbc.update(connection -> {
             var statement = connection.prepareStatement("""
                     INSERT INTO `match` (title, start_at, end_at, max_participant, sport_type, gender_group,
-                                         service_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                         service_id, created_at, updated_at, target_points)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, Statement.RETURN_GENERATED_KEYS);
             for (int i = 0; i < values.length; i++) {
                 statement.setObject(i + 1, values[i]);
