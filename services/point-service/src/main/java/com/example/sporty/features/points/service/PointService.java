@@ -46,7 +46,7 @@ public class PointService {
 
     @Transactional(readOnly = true)
     public Long getBalance(Long userId) {
-        return pointAccountRepository.findById(userId)
+        return pointAccountRepository.findByUserId(userId)
                 .map(PointAccountEntity::getBalance)
                 .orElse(initialBalance);
     }
