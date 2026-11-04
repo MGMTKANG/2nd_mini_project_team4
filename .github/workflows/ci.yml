@@ -22,20 +22,91 @@ jobs:
       run:
         working-directory: frontend
     env:
-      CI: 'true'
+      CI: "true"
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm test -- --watchAll=false --runInBand
       - run: npm run build
-  
+
+  api-gateway:
+    name: API Gateway build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Build API Gateway
+        run: >-
+          bash services/api-gateway/gradlew
+          -p services/api-gateway
+          clean build --no-daemon
+
+  publish-api-gateway:
+    name: Publish API Gateway image to ECR
+    needs: [frontend, api-gateway]
+    if: >-
+      github.ref == 'refs/heads/develop' &&
+      (github.event_name == 'push' ||
+       github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      image_uri: ${{ steps.push-image.outputs.image_uri }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ap-northeast-2
+      ECR_REPOSITORY: team4/api-gateway
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::088153173875:role/team4-github-ecr-push
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push API Gateway image
+        id: push-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          set -euo pipefail
+
+          IMAGE_TAG="sha-${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+
+          docker build --platform linux/amd64 \
+            -t "$IMAGE_URI" \
+            services/api-gateway
+          docker push "$IMAGE_URI"
+
+          echo "image_uri=$IMAGE_URI" >> "$GITHUB_OUTPUT"
+          echo "### API Gateway image" >> "$GITHUB_STEP_SUMMARY"
+          echo "$IMAGE_URI" >> "$GITHUB_STEP_SUMMARY"
+
   discovery:
     name: Discovery service build
     runs-on: ubuntu-latest
@@ -127,7 +198,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
       - name: Build and test match service
         run: >
@@ -144,7 +215,7 @@ jobs:
             services/match-service/build/reports/tests/
             services/match-service/build/test-results/
           if-no-files-found: ignore
-  
+
   publish-match:
     name: Publish match image to ECR
     needs: [frontend, match]
@@ -291,7 +362,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
       - name: Build and test facility service
         run: >
@@ -308,7 +379,7 @@ jobs:
             services/facility-service/build/reports/tests/
             services/facility-service/build/test-results/
           if-no-files-found: ignore
-  
+
   publish-facility:
     name: Publish facility image to ECR
     needs: [frontend, facility]
@@ -467,7 +538,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
       - name: Build and test user service
         run: >
@@ -484,7 +555,6 @@ jobs:
             services/user-service/build/reports/tests/
             services/user-service/build/test-results/
           if-no-files-found: ignore
-
 
   publish-user:
     name: Publish user image to ECR
@@ -566,7 +636,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
       - name: Build and test point service
         run: >
@@ -583,7 +653,6 @@ jobs:
             services/point-service/build/reports/tests/
             services/point-service/build/test-results/
           if-no-files-found: ignore
-  
 
   publish-point:
     name: Publish point image to ECR
