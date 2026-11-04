@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: facility-service
+  namespace: sporty
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: facility-service
+  template:
+    metadata:
+      labels:
+        app: facility-service
+    spec:
+      terminationGracePeriodSeconds: 40
+      containers:
+        - name: facility-service
+          image: 088153173875.dkr.ecr.ap-northeast-2.amazonaws.com/team4/facility-service:sha-c9d3ddd7056ef288c951a131051a971041a94215-41751892894-1
+          ports:
+            - name: http
+              containerPort: 8083
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: dev
+            - name: TZ
+              value: Asia/Seoul
+            - name: FACILITY_DB_URL
+              value: jdbc:mariadb://172.31.38.169:3307/facility_db?sslMode=verify-full
+            - name: FACILITY_DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: sporty-db-dev-secret
+                  key: DB_USERNAME
+            - name: FACILITY_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: sporty-db-dev-secret
+                  key: DB_PASSWORD
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sporty-jwt-secret
+                  key: JWT_SECRET
+            - name: FACILITY_JPA_DDL_AUTO
+              value: validate
+            - name: CONFIG_ENABLED
+              value: "false"
+            - name: EUREKA_ENABLED
+              value: "false"
+            - name: MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED
+              value: "true"
+            - name: PUBLIC_DATA_API_URL
+              valueFrom:
+                secretKeyRef:
+                  name: sporty-facility-dev-secret
+                  key: PUBLIC_DATA_API_URL
+            - name: PUBLIC_DATA_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sporty-facility-dev-secret
+                  key: PUBLIC_DATA_API_KEY
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
