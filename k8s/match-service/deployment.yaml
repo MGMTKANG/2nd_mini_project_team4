@@ -17,7 +17,7 @@ spec:
       terminationGracePeriodSeconds: 40
       containers:
         - name: match-service
-          image: 088153173875.dkr.ecr.ap-northeast-2.amazonaws.com/team4/match-service:sha-40d2521ee02a1dc3c1cf2b4fa8dd6f033cdec6d0-41707297169-1
+          image: 088153173875.dkr.ecr.ap-northeast-2.amazonaws.com/team4/match-service:sha-a2284b54eb9e3295d0a20d3eee5e17bd512d2ae9-41748055367-1
           ports:
             - name: http
               containerPort: 8082
